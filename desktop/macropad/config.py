@@ -32,7 +32,16 @@ FIRMWARE_KIND_IDS = {
     "app": 7,
     "url": 8,
 }
-FIRMWARE_DIRECT_KINDS = {"none", "hotkey", "text", "sequence", "lock_screen", "close_app"}
+FIRMWARE_DIRECT_KINDS = {
+    "none",
+    "hotkey",
+    "text",
+    "sequence",
+    "lock_screen",
+    "close_app",
+    "app",
+    "url",
+}
 ALIASES = {
     "control": "ctrl",
     "win": "cmd",

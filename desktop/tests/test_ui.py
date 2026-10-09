@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from macropad.config import Action, load_config
@@ -46,6 +47,43 @@ def test_default_safe_state(window) -> None:
     window._executor.execute.assert_not_called()
 
 
+def test_secondary_controls_are_in_options_menu(window) -> None:
+    """Infrequent controls are reachable without crowding the main screen."""
+    labels = [action.text() for action in window.options.menu().actions()]
+    assert "Nhân bản profile" in labels
+    assert "Hiện nhật ký" in labels
+    assert "Ẩn xuống khay" in labels
+    assert not window.refresh.isHidden()
+    assert not window.sync_button.isHidden()
+    assert window.log.isHidden()
+    window.log_toggle.setChecked(True)
+    assert not window.log.isHidden()
+
+
+def test_save_and_sync_are_separate_primary_actions(window) -> None:
+    """Saving locally and syncing to the board have distinct buttons."""
+    with patch.object(window, "_save", return_value=True) as save:
+        window.save_button.click()
+    save.assert_called_once_with()
+    with patch.object(window, "_sync_profile", return_value=True) as sync:
+        window.sync_button.click()
+    sync.assert_not_called()
+    window.sync_button.setEnabled(True)
+    with patch.object(window, "_sync_profile", return_value=True) as sync:
+        window.sync_button.click()
+    sync.assert_called_once_with()
+
+
+def test_value_less_action_does_not_save_stale_shortcut(window) -> None:
+    """Named actions show a summary instead of a disabled stale value."""
+    card = window.cards[0]
+    card.value.setPlainText("Ctrl+C")
+    card.kind.setCurrentIndex(card.kind.findData("close_app"))
+    assert card.value.isHidden()
+    assert not card.summary.isHidden()
+    assert card.assignment() == Action("close_app", "")
+
+
 def test_edit_save_and_reload(window) -> None:
     """A Unicode assignment persists, and editing always disarms."""
     card = window.cards[0]
@@ -66,22 +104,87 @@ def test_invalid_save_keeps_previous_config(window) -> None:
     assert window._config.profiles["Mặc định"][0].value == "Ctrl+C"
 
 
-def test_hard_shortcut_preset_is_selectable(window) -> None:
-    """Reserved Windows shortcuts can be chosen without keyboard capture."""
+def test_hotkey_value_is_entered_directly(window) -> None:
+    """Shortcut values remain directly editable alongside the compact recorder."""
     card = window.cards[0]
     card.kind.setCurrentIndex(card.kind.findData("hotkey"))
-    card.preset.setCurrentIndex(2)  # Win+Shift+S
-    assert card.value.toPlainText() == "Win+Shift+S"
-    assert card.assignment() == Action("hotkey", "Win+Shift+S")
+    card.value.setPlainText("Ctrl+Shift+S")
+    assert card.assignment() == Action("hotkey", "Ctrl+Shift+S")
+    assert not card.record.isHidden()
 
 
-def test_win_l_preset_uses_native_lock_action(window) -> None:
-    """The Win+L preset selects the native lock action."""
+def test_shortcut_recorder_captures_one_chord(window) -> None:
+    """The recorder fills the normal value field and then exits capture mode."""
     card = window.cards[0]
     card.kind.setCurrentIndex(card.kind.findData("hotkey"))
-    card.preset.setCurrentText("Win+L — khóa máy")
-    assert card.kind.currentData() == "lock_screen"
-    assert card.assignment() == Action("lock_screen", "")
+    card._start_recording()
+    event = QKeyEvent(
+        QKeyEvent.Type.KeyPress,
+        Qt.Key.Key_S,
+        Qt.KeyboardModifier.ControlModifier,
+        "s",
+    )
+    card.record.keyPressEvent(event)
+    assert card.value.toPlainText() == "Ctrl+S"
+    assert not card._recording
+
+
+def test_action_dropdown_has_only_grouped_core_actions(window) -> None:
+    """The action dropdown avoids duplicate quick-key entries."""
+    card = window.cards[0]
+    labels = [card.kind.itemText(i) for i in range(card.kind.count())]
+    assert labels == [
+        "Không gán",
+        "Phím tắt",
+        "Chuỗi phím",
+        "Văn bản",
+        "Mở ứng dụng",
+        "Mở website",
+        "",
+        "Khóa màn hình",
+        "Chụp màn hình vào clipboard",
+        "Đóng ứng dụng đang dùng",
+    ]
+    assert "Xóa (Delete)" not in labels
+    assert "Chụp màn hình (Print Screen)" not in labels
+
+
+def test_recording_pauses_macro_and_cancel_preserves_value(window) -> None:
+    """Recording must be safe, and cancelling must retain the previous chord."""
+    card = window.cards[0]
+    card.value.setPlainText("Ctrl+Shift+S")
+    window._ready = True
+    window.preview.setChecked(False)
+    window._dirty = False
+    window.arm.setChecked(True)
+    assert window.arm.isChecked()
+    card._start_recording()
+    assert not window.arm.isChecked()
+    card.record.keyPressEvent(
+        QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    )
+    assert not card._recording
+    assert card.kind.isEnabled()
+    assert card.assignment() == Action("hotkey", "Ctrl+Shift+S")
+
+
+def test_sequence_value_is_entered_directly(window) -> None:
+    """Sequences use the same single value field as other editable actions."""
+    card = window.cards[0]
+    card.kind.setCurrentIndex(card.kind.findData("sequence"))
+    card.value.setPlainText("1,Enter")
+    assert card.assignment() == Action("sequence", "1,Enter")
+
+
+def test_browse_is_only_available_for_apps(window) -> None:
+    """The file picker belongs only to the app action."""
+    card = window.cards[0]
+    for kind in ("none", "hotkey", "sequence", "text", "url"):
+        card.kind.setCurrentIndex(card.kind.findData(kind))
+        assert card.browse.isHidden()
+    card.kind.setCurrentIndex(card.kind.findData("app"))
+    assert not card.browse.isHidden()
+    assert card.browse.isEnabled()
 
 
 @pytest.mark.parametrize(
@@ -265,6 +368,8 @@ def test_render_window(window, app) -> None:
     artifact.mkdir(exist_ok=True)
     assert window.grab().save(str(artifact / "window.png"))
     assert window.cards[3].value.isVisible()
+    assert not window.log.isVisible()
+    window.log_toggle.setChecked(True)
     assert window.log.isVisible()
 
 

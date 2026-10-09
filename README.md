@@ -30,9 +30,9 @@ pio run -t upload
 ```
 
 Firmware hỗ trợ USB HID/Serial và BLE HID. Profile sửa trong desktop app chỉ có
-hiệu lực BLE sau khi bấm `Đồng bộ board`. Các action `app` và `url` cần desktop
-app trên máy chủ; BLE HID chỉ thực thi được hotkey, sequence, text và action hệ
-thống được firmware hỗ trợ.
+hiệu lực BLE sau khi bấm `Đồng bộ board`. Qua BLE, action `app` và `url` được
+thực hiện bằng `Win+R`, nhập giá trị và nhấn `Enter`, nên cách này dành cho
+Windows. BLE HID cũng hỗ trợ hotkey, sequence, text và các action hệ thống.
 
 ## Kiểm thử
 

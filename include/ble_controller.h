@@ -18,6 +18,7 @@ private:
 
     bool executeHotkey(const char* value);
     bool executeSequence(const char* value);
+    bool executeRunCommand(const char* value);
     bool executeChord(const char* value);
     uint8_t keyCodeForName(const char* name, bool& isMedia);
     static void trim(char* text);

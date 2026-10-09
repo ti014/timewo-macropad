@@ -5,6 +5,7 @@
 
 namespace {
 constexpr uint32_t kInterKeyDelayMs = 8;
+constexpr uint32_t kRunDialogDelayMs = 150;
 
 bool equalsIgnoreCase(const char* left, const char* right) {
     while (*left != '\0' && *right != '\0') {
@@ -66,8 +67,13 @@ bool BleController::execute(const MacroAction& action) {
             return executeHotkey("Win+L");
         case ActionKind::CloseApp:
             return executeHotkey("Alt+F4");
+        case ActionKind::Screenshot:
+            return executeHotkey("Print_Screen");
+        case ActionKind::App:
+        case ActionKind::Url:
+            return executeRunCommand(action.value);
         default:
-            // OS actions such as opening an app or locking the session belong to the host app.
+            // Unknown host-specific actions are intentionally ignored over BLE.
             return false;
     }
 }
@@ -93,6 +99,19 @@ bool BleController::executeSequence(const char* value) {
         if (cursor != nullptr) delay(kInterKeyDelayMs);
     }
     return true;
+}
+
+bool BleController::executeRunCommand(const char* value) {
+    // BLE HID cannot launch a process or browser directly. On Windows, use
+    // the Run dialog as a keyboard-only bridge so both full .exe paths and
+    // http(s) URLs work without a companion desktop process.
+    if (value == nullptr || *value == '\0') return false;
+    if (!executeChord("Win+R")) return false;
+    delay(kRunDialogDelayMs);
+    if (!executeChord("Ctrl+A")) return false;
+    keyboard_.print(value);
+    delay(kInterKeyDelayMs);
+    return executeChord("Enter");
 }
 
 bool BleController::executeChord(const char* value) {

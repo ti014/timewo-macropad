@@ -16,3 +16,4 @@ desktop/dist/
 desktop/*.spec
 desktop/.test-*/
 desktop/.test-artifacts/
+.test-tmp/

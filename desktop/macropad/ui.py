@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QSystemTrayIcon,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -47,44 +50,56 @@ HINTS = {
     "screenshot": "Ch\u1ee5p to\u00e0n m\u00e0n h\u00ecnh hi\u1ec7n t\u1ea1i v\u00e0o clipboard \u0111\u1ec3 d\u00e1n b\u1eb1ng Ctrl+V.",
     "close_app": "G\u1eedi Alt+F4 \u0111\u1ec3 \u0111\u00f3ng c\u1eeda s\u1ed5/\u1ee9ng d\u1ee5ng \u0111ang \u0111\u01b0\u1ee3c ch\u1ecdn.",
     "none": "Nút này sẽ không thực hiện hành động.",
-    "hotkey": "Ví dụ: Ctrl+C, Ctrl+Shift+S, Alt+Tab, Win+E, F5, media_volume_up",
+    "hotkey": "Nhập tổ hợp hoặc bấm Bắt phím. Ví dụ: Ctrl+Shift+S, Delete, Print_Screen",
     "text": "Nhập nội dung cần gõ (tối đa 2000 ký tự). Xuống dòng cũng gửi phím Enter.",
     "app": "Chọn file .exe. Không nhập lệnh, tham số hoặc đường dẫn shortcut .lnk.",
     "url": "Ví dụ: https://github.com — mở bằng trình duyệt mặc định.",
 }
-HOTKEY_PRESETS = (
-    ("Alt+F4 — đóng cửa sổ", "Alt+F4"),
-    ("Win+Shift+S — chọn vùng chụp", "Win+Shift+S"),
-    ("Win+Print_Screen — lưu ảnh màn hình", "Win+Print_Screen"),
-    ("Ctrl+Shift+Esc — Task Manager", "Ctrl+Shift+Esc"),
-    ("Win+L — khóa máy", "Win+L"),
-    ("Alt+Tab — chuyển cửa sổ", "Alt+Tab"),
+ACTION_GROUPS = (
+    ("Cơ bản", ("none", "hotkey", "sequence", "text", "app", "url")),
+    ("Hệ thống", ("lock_screen", "screenshot", "close_app")),
 )
 STYLE = """
-QWidget { font-family: 'Segoe UI'; font-size: 9pt; color: #e8edf5; }
-QMainWindow, QWidget#root { background: #111827; }
-QGroupBox { background: #1b2639; border: 1px solid #34435b; border-radius: 8px;
-            margin-top: 10px; padding: 10px 8px 8px; font-weight: 600; }
-QGroupBox::title { subcontrol-origin: margin; left: 14px; }
-QFrame#buttonRow { background: #1b2639; border: 1px solid #34435b; border-radius: 6px; }
-QLabel#buttonName { color: #dbeafe; font-weight: 600; }
-QLabel#tableHeader { color: #8fa3bf; font-size: 8pt; }
-QPushButton { background: #2b3b54; border: 1px solid #435572; border-radius: 5px;
-              min-height: 27px; padding: 4px 9px; }
-QPushButton:hover { background: #3b4f70; }
-QPushButton:disabled { color: #76849b; background: #202c40; }
-QPushButton#primary { background: #2563eb; border-color: #3b82f6; }
-QPushButton#arm:checked { background: #b45309; }
-QComboBox, QPlainTextEdit, QLineEdit { background: #111b2c; border: 1px solid #435572;
-                                    border-radius: 4px; min-height: 27px; padding: 4px 6px; }
-QComboBox QAbstractItemView { background: #1b2639; selection-background-color: #2563eb; }
-QLabel#muted { color: #a9b8d0; }
-QLabel#title { font-size: 17pt; font-weight: 700; }
-QCheckBox { spacing: 8px; }
-QMenu { background: #1b2639; }
-QMenu::item:selected { background: #2563eb; }
-QToolTip { background: #1b2639; color: white; }
+QWidget { font-family: 'Segoe UI'; font-size: 9pt; color: #171717; }
+QMainWindow, QWidget#root { background: #f6edda; }
+QGroupBox { background: #fffdf5; border: 2px solid #171717; border-radius: 10px;
+            margin-top: 10px; padding: 10px 8px 8px; font-weight: 800; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
+QFrame#buttonRow { background: #fffdf5; border: 2px solid #171717; border-radius: 10px; }
+QLabel#buttonName { color: #171717; font-weight: 800; }
+QLabel#tableHeader { color: #171717; font-size: 8pt; font-weight: 800; }
+QPushButton, QToolButton { background: #ffd43b; color: #171717; border: 2px solid #171717; border-radius: 8px;
+              min-height: 27px; padding: 4px 10px; font-weight: 700; }
+QPushButton:hover { background: #ffe274; }
+QPushButton:pressed { background: #f4b900; padding-left: 12px; padding-top: 6px; }
+QPushButton:disabled { color: #777064; background: #e5dcc9; border-color: #777064; }
+QPushButton#primary { background: #ff6b9a; }
+QPushButton#primary:hover { background: #ff8ab0; }
+QPushButton#arm:checked { background: #7bdc55; }
+QToolButton { background: #fffdf5; }
+QToolButton:hover { background: #e9dfcb; }
+QComboBox, QPlainTextEdit, QLineEdit { background: #ffffff; color: #171717; border: 2px solid #171717;
+                                    border-radius: 8px; min-height: 27px; padding: 4px 7px; }
+QComboBox QAbstractItemView { background: #ffffff; color: #171717; border: 2px solid #171717;
+                              selection-background-color: #65cfff; selection-color: #171717; }
+QLabel#muted { color: #5f584c; }
+QLabel#title { color: #171717; font-size: 20pt; font-weight: 800; }
+QCheckBox { spacing: 8px; font-weight: 600; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid #171717; border-radius: 4px; background: #ffffff; }
+QCheckBox::indicator:checked { background: #65cfff; }
+QMenu { background: #fffdf5; color: #171717; border: 2px solid #171717; }
+QMenu::item:selected { background: #65cfff; }
+QToolTip { background: #171717; color: #fffdf5; border: 1px solid #171717; }
 """
+
+
+def add_hard_shadow(widget: QWidget, offset: int = 4) -> None:
+    """Give a widget the zero-blur offset shadow used by Neo-Brutalism."""
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(0)
+    effect.setOffset(offset, offset)
+    effect.setColor(QColor("#171717"))
+    widget.setGraphicsEffect(effect)
 
 
 def app_icon() -> QIcon:
@@ -106,36 +121,38 @@ def app_icon() -> QIcon:
 
 
 class ShortcutCaptureButton(QPushButton):
-    """Button that temporarily consumes one keyboard chord for recording."""
+    """Capture one keyboard chord for the adjacent shortcut field."""
 
     captured = Signal(str)
     cancelled = Signal()
     invalid = Signal(str)
 
     def __init__(self) -> None:
-        super().__init__("Ghi phím tắt")
+        super().__init__("Bắt phím")
         self._recording = False
 
     def start_recording(self) -> None:
-        """Capture the next non-modifier key event received by this button."""
+        """Capture the next complete shortcut chord."""
         self._recording = True
-        self.setText("Đang ghi… (Esc để hủy)")
+        self.setText("Nhấn phím…")
+        self.setToolTip("Nhấn tổ hợp cần ghi. Nhấn Esc để hủy.")
         self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def stop_recording(self) -> None:
-        """Return to the normal button state."""
+        """Restore the compact idle label."""
         self._recording = False
-        self.setText("Ghi phím tắt")
+        self.setText("Bắt phím")
+        self.setToolTip("Ghi một tổ hợp phím từ bàn phím.")
 
     def event(self, event) -> bool:
-        """Prevent Qt shortcuts from handling a chord before keyPressEvent."""
+        """Prevent Qt shortcuts from consuming the chord first."""
         if self._recording and event.type() == QEvent.Type.ShortcutOverride:
             event.accept()
             return True
         return super().event(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Consume Esc or emit the first complete shortcut chord."""
+        """Consume Esc or emit the first complete chord."""
         if not self._recording:
             super().keyPressEvent(event)
             return
@@ -152,6 +169,8 @@ class ShortcutCaptureButton(QPushButton):
             shortcut = shortcut_from_event(event)
         except ValueError as exc:
             self.invalid.emit(str(exc))
+            return
+        if not shortcut:
             return
         self.stop_recording()
         self.captured.emit(shortcut)
@@ -247,6 +266,8 @@ class ActionValueEditor(QWidget):
 class ButtonEditor(QFrame):
     """Editable assignment for one physical button."""
 
+    captureStarted = Signal()
+
     def __init__(self, number: int, pin: int) -> None:
         """Build an action selector and literal value editor.
 
@@ -261,24 +282,22 @@ class ButtonEditor(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 5, 8, 5)
         layout.setSpacing(6)
-        self.title = QLabel(f"BTN{number}  /  GPIO{pin}")
+        self.title = QLabel(f"Nút {number}")
+        self.title.setToolTip(f"BTN{number} / GPIO{pin}")
         self.title.setObjectName("buttonName")
-        self.title.setFixedWidth(92)
+        self.title.setFixedWidth(52)
         layout.addWidget(self.title)
         self.kind = QComboBox()
-        self.kind.setMinimumWidth(122)
-        self.kind.setMaximumWidth(150)
-        for key, label in KINDS.items():
-            self.kind.addItem(label, key)
-        self.preset = QComboBox()
-        self.preset.setMinimumWidth(160)
-        self.preset.setMaximumWidth(190)
-        self.preset.addItem("Chọn phím tắt có sẵn…", "")
-        for label, value in HOTKEY_PRESETS:
-            self.preset.addItem(label, value)
-        self.preset.currentIndexChanged.connect(self._choose_preset)
+        self.kind.setFixedWidth(230)
+        for group_index, (_group_name, keys) in enumerate(ACTION_GROUPS):
+            if group_index:
+                self.kind.insertSeparator(self.kind.count())
+            for key in keys:
+                self.kind.addItem(KINDS[key], key)
         self.value = ActionValueEditor()
         self.value.setPlaceholderText("Giá trị hoặc chuỗi phím…")
+        self.summary = QLabel()
+        self.summary.setObjectName("muted")
         self.hint = QLabel()
         self.hint.setWordWrap(True)
         self.hint.setObjectName("muted")
@@ -287,77 +306,85 @@ class ButtonEditor(QFrame):
         self.browse = QPushButton("Chọn file .exe…")
         self.browse.setMinimumWidth(96)
         self.record = ShortcutCaptureButton()
-        self.record.setMinimumWidth(88)
+        self.record.setMinimumWidth(82)
         self.record.clicked.connect(self._start_recording)
         self.record.captured.connect(self._shortcut_recorded)
         self.record.cancelled.connect(self._recording_cancelled)
         self.record.invalid.connect(self._recording_invalid)
         self.browse.clicked.connect(self._browse)
         layout.addWidget(self.kind)
-        layout.addWidget(self.preset)
         layout.addWidget(self.value, 1)
-        layout.addWidget(self.record)
-        layout.addWidget(self.browse)
+        tools = QWidget()
+        tools.setFixedWidth(118)
+        tool_layout = QHBoxLayout(tools)
+        tool_layout.setContentsMargins(0, 0, 0, 0)
+        tool_layout.addWidget(self.record)
+        tool_layout.addWidget(self.browse)
+        layout.addWidget(self.summary, 1)
+        layout.addWidget(tools)
         self.kind.currentIndexChanged.connect(self._update_hint)
         self._recording = False
+        add_hard_shadow(self)
         self._update_hint()
 
     def _update_hint(self) -> None:
         """Explain accepted input for the selected action."""
         kind = self.kind.currentData()
+        if not isinstance(kind, str):
+            return
         self.hint.setText(HINTS[kind])
+        editable = kind in {"hotkey", "sequence", "text", "app", "url"}
+        self.value.setVisible(editable)
+        self.summary.setVisible(not editable)
+        self.summary.setText(
+            {
+                "none": "Không thực hiện hành động",
+                "lock_screen": "Khóa Windows",
+                "screenshot": "Ảnh vào clipboard",
+                "close_app": "Gửi Alt+F4",
+            }.get(kind, "")
+        )
+        self.value.setToolTip(self.hint.text())
+        self.summary.setToolTip(self.hint.text())
         self.value.set_multiline(kind == "text")
-        self.preset.setVisible(True)
-        self.preset.setEnabled(kind == "hotkey" and not self._recording)
-        self.value.setEnabled(kind in {"hotkey", "sequence", "text", "app", "url"})
+        self.value.setEnabled(editable)
+        self.record.setVisible(kind == "hotkey")
         self.record.setEnabled(kind == "hotkey" and not self._recording)
+        self.browse.setVisible(kind == "app")
         self.browse.setEnabled(kind == "app")
 
-    def _choose_preset(self, _index: int) -> None:
-        """Copy a known system shortcut into the editor."""
-        value = self.preset.currentData()
-        if not value:
-            return
-        if value == "Win+L":
-            self.kind.setCurrentIndex(self.kind.findData("lock_screen"))
-            self.value.clear()
-        else:
-            self.value.setPlainText(value)
-        self.preset.blockSignals(True)
-        self.preset.setCurrentIndex(0)
-        self.preset.blockSignals(False)
-
     def _start_recording(self) -> None:
-        """Put this editor into keyboard capture mode."""
+        """Temporarily capture one shortcut into the value editor."""
         if self.kind.currentData() != "hotkey" or self._recording:
             return
         self._recording = True
         self.kind.setEnabled(False)
-        self.preset.setEnabled(False)
         self.value.setEnabled(False)
         self.browse.setEnabled(False)
-        self.hint.setText("Đang ghi phím tắt: nhấn tổ hợp trên bàn phím. Nhấn Esc để hủy.")
+        self.record.setEnabled(True)
+        self.hint.setText("Nhấn tổ hợp phím trên bàn phím. Nhấn Esc để hủy.")
+        self.captureStarted.emit()
         self.record.start_recording()
 
     def _finish_recording(self) -> None:
-        """Restore normal editor controls after recording ends."""
+        """Restore the normal controls after capture ends."""
         self._recording = False
         self.kind.setEnabled(True)
         self.value.setEnabled(True)
         self._update_hint()
 
     def _shortcut_recorded(self, shortcut: str) -> None:
-        """Put the captured chord into the value editor."""
+        """Put the captured shortcut into the value editor."""
         self.value.setPlainText(shortcut)
         self._finish_recording()
 
     def _recording_cancelled(self) -> None:
-        """Leave the existing shortcut unchanged when Esc is pressed."""
+        """Keep the previous value when capture is cancelled."""
         self._finish_recording()
 
     def _recording_invalid(self, message: str) -> None:
-        """Show a recoverable message while keeping capture active."""
-        self.hint.setText(message + " Vui lòng thử lại hoặc nhấn Esc để hủy.")
+        """Show a recoverable error while keeping capture active."""
+        self.hint.setText(message + " Thử lại hoặc nhấn Esc để hủy.")
 
     def _browse(self) -> None:
         """Select an executable without launching it."""
@@ -375,8 +402,13 @@ class ButtonEditor(QFrame):
             ValueError: If input is invalid.
         """
         kind = self.kind.currentData()
+        if not isinstance(kind, str):
+            raise TypeError("Hãy chọn một loại hành động.")
         text = self.value.toPlainText()
-        action = Action(kind, text if kind == "text" else text.strip())
+        value = text if kind == "text" else text.strip()
+        if kind in {"none", "lock_screen", "screenshot", "close_app"}:
+            value = ""
+        action = Action(kind, value)
         action.validate()
         return action
 
@@ -417,66 +449,68 @@ class MainWindow(QMainWindow):
         self._waiting_for_board = False
         self._resume_macro = False
         self._retry_error: str | None = None
-        self.setWindowTitle("Macropad Configurator — USB/BLE v0.9")
+        self.setWindowTitle("timewo-macropad — USB/BLE v0.9")
         self.setWindowIcon(app_icon())
-        self.resize(880, 710)
-        self.setMinimumSize(760, 620)
+        self.resize(880, 620)
+        self.setMinimumSize(840, 590)
         self.setStyleSheet(STYLE)
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(7)
-        title = QLabel("Macropad Configurator")
+        layout.setSpacing(12)
+        title = QLabel("timewo-macropad")
         title.setObjectName("title")
         layout.addWidget(title)
-        subtitle = QLabel("4 nút · Kết nối USB · Đổi chức năng không cần nạp lại board")
-        subtitle.setObjectName("muted")
-        layout.addWidget(subtitle)
 
-        connection_bar = QHBoxLayout()
+        device_group = QGroupBox("Thiết bị")
+        device_bar = QHBoxLayout(device_group)
+        device_bar.setContentsMargins(0, 2, 0, 0)
         self.ports = QComboBox()
-        self.ports.setMinimumWidth(220)
-        self.refresh = QPushButton("Tìm cổng")
+        self.ports.setMinimumWidth(250)
+        self.refresh = QPushButton("Làm mới")
         self.refresh.clicked.connect(self._refresh_ports)
         self.connect_button = QPushButton("Kết nối")
         self.connect_button.clicked.connect(self._toggle_connection)
         self.status = QLabel("Chưa kết nối")
-        connection_bar.setSpacing(6)
-        connection_bar.addWidget(self.ports, 1)
-        connection_bar.addWidget(self.refresh)
-        connection_bar.addWidget(self.connect_button)
-        connection_bar.addWidget(self.status)
-        layout.addLayout(connection_bar)
+        device_bar.setSpacing(6)
+        device_bar.addWidget(self.ports, 1)
+        device_bar.addWidget(self.refresh)
+        device_bar.addWidget(self.connect_button)
+        device_bar.addWidget(self.status)
+        layout.addWidget(device_group)
 
-        profile_bar = QHBoxLayout()
+        profile_group = QGroupBox("Profile cấu hình")
+        profile_bar = QHBoxLayout(profile_group)
+        profile_bar.setContentsMargins(0, 2, 0, 0)
         profile_bar.setSpacing(6)
-        profile_bar.addWidget(QLabel("Profile:"))
         self.profiles = QComboBox()
         self.profiles.addItems(self._config.profiles)
         self.profiles.setCurrentText(self._config.active)
         self.profiles.currentTextChanged.connect(self._switch_profile)
+        profile_bar.addWidget(QLabel("Đang dùng:"))
         profile_bar.addWidget(self.profiles, 1)
-        new_button = QPushButton("Nhân bản profile")
-        new_button.clicked.connect(self._new_profile)
-        profile_bar.addWidget(new_button)
-        self.save_button = QPushButton("Lưu cấu hình")
-        self.save_button.setObjectName("primary")
-        self.save_button.clicked.connect(self._save)
-        profile_bar.addWidget(self.save_button)
-        self.sync_button = QPushButton("Đồng bộ board")
-        self.sync_button.setEnabled(False)
-        self.sync_button.clicked.connect(self._sync_profile)
-        profile_bar.addWidget(self.sync_button)
-        layout.addLayout(profile_bar)
+        self.options = QToolButton()
+        self.options.setText("Tùy chọn")
+        self.options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        options_menu = QMenu(self.options)
+        options_menu.addAction("Nhân bản profile", self._new_profile)
+        options_menu.addSeparator()
+        self.log_toggle = options_menu.addAction("Hiện nhật ký")
+        self.log_toggle.setCheckable(True)
+        options_menu.addAction("Ẩn xuống khay", self._hide_to_tray)
+        self.options.setMenu(options_menu)
+        profile_bar.addWidget(self.options)
+        layout.addWidget(profile_group)
 
-        table = QVBoxLayout()
-        table.setSpacing(5)
+        assignment_group = QGroupBox("Gán chức năng cho 4 nút")
+        table = QVBoxLayout(assignment_group)
+        table.setSpacing(9)
         header = QHBoxLayout()
         header.setContentsMargins(8, 0, 8, 0)
         header.setSpacing(6)
-        for text, width in (("Nút", 92), ("Loại", 122), ("Preset", 160)):
+        for text, width in (("Nút", 52), ("Chức năng", 230)):
             label = QLabel(text)
             label.setObjectName("tableHeader")
             label.setFixedWidth(width)
@@ -484,41 +518,51 @@ class MainWindow(QMainWindow):
         value_header = QLabel("Giá trị")
         value_header.setObjectName("tableHeader")
         header.addWidget(value_header, 1)
-        for text, width in (("Ghi", 88), ("Tệp", 96)):
-            label = QLabel(text)
-            label.setObjectName("tableHeader")
-            label.setFixedWidth(width)
-            header.addWidget(label)
+        header.addSpacing(118)
         table.addLayout(header)
         self.cards = []
         for index, pin in enumerate((3, 4, 5, 6)):
             card = ButtonEditor(index + 1, pin)
             card.kind.currentIndexChanged.connect(self._edited)
             card.value.textChanged.connect(self._edited)
+            card.captureStarted.connect(self._pause_macro)
             self.cards.append(card)
             table.addWidget(card)
         table.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(table)
+        layout.addWidget(assignment_group)
 
-        controls = QHBoxLayout()
+        run_group = QGroupBox("Chạy macro")
+        controls = QHBoxLayout(run_group)
+        controls.setContentsMargins(0, 2, 0, 0)
         self.arm = QPushButton("Bật macro")
         self.arm.setObjectName("arm")
         self.arm.setCheckable(True)
         self.arm.setEnabled(False)
         self.arm.toggled.connect(self._arm_changed)
-        self.preview = QCheckBox("Chỉ kiểm tra nút (không phát phím)")
+        self.preview = QCheckBox("Chỉ kiểm tra nút")
+        self.preview.setToolTip("Nhận tín hiệu từ nút nhưng không thực hiện macro.")
         self.preview.setChecked(True)
         self.preview.toggled.connect(self._pause_macro)
-        hide_button = QPushButton("Ẩn xuống khay")
-        hide_button.clicked.connect(self._hide_to_tray)
+        self.save_button = QPushButton("Lưu cấu hình")
+        self.save_button.setObjectName("primary")
+        self.save_button.clicked.connect(self._save)
+        self.save_button.setToolTip("Lưu profile vào máy tính.")
+        self.sync_button = QPushButton("Đồng bộ board")
+        self.sync_button.setEnabled(False)
+        self.sync_button.clicked.connect(self._sync_profile)
+        self.sync_button.setToolTip("Chép profile hiện tại vào bộ nhớ của board để dùng BLE.")
+        add_hard_shadow(self.arm, offset=3)
+        for action_button in (self.refresh, self.connect_button, self.save_button, self.sync_button):
+            add_hard_shadow(action_button, offset=3)
         controls.setSpacing(8)
-        controls.addWidget(self.arm)
         controls.addWidget(self.preview, 1)
-        controls.addWidget(hide_button)
-        layout.addLayout(controls)
+        controls.addWidget(self.save_button)
+        controls.addWidget(self.sync_button)
+        controls.addWidget(self.arm)
+        layout.addWidget(run_group)
 
         help_label = QLabel(
-            "Đóng Serial Monitor → Kết nối → gán nút → Lưu → Đồng bộ board → bỏ kiểm tra → Bật macro."
+            "USB: cần app chạy. BLE: dùng cấu hình đã lưu lên board."
         )
         help_label.setToolTip(
             "Macro tác động vào cửa sổ đang chọn. Khi sửa cấu hình, macro tự tạm dừng. "
@@ -531,6 +575,8 @@ class MainWindow(QMainWindow):
         self.log.setMaximumBlockCount(200)
         self.log.setMinimumHeight(48)
         self.log.setMaximumHeight(70)
+        self.log.hide()
+        self.log_toggle.toggled.connect(self.log.setVisible)
         layout.addWidget(self.log)
         self._load_cards()
         self._log("Sẵn sàng. USB dùng app; BLE dùng profile đã đồng bộ lên board.")
@@ -578,7 +624,11 @@ class MainWindow(QMainWindow):
         if not self._loading:
             self._dirty = True
             self._pause_macro()
-            self.save_button.setText("Lưu cấu hình *")
+            self._update_save_label()
+
+    def _update_save_label(self) -> None:
+        """Mark local configuration edits without changing the button meaning."""
+        self.save_button.setText("Lưu cấu hình" + (" *" if self._dirty else ""))
 
     def _load_cards(self) -> None:
         """Display the active profile without marking it dirty."""
@@ -587,7 +637,7 @@ class MainWindow(QMainWindow):
             card.set_assignment(action)
         self._loading = False
         self._dirty = False
-        self.save_button.setText("Lưu cấu hình")
+        self._update_save_label()
 
     def _save(self) -> bool:
         """Validate and atomically save all current button assignments."""
@@ -601,7 +651,7 @@ class MainWindow(QMainWindow):
             return False
         self._config = updated
         self._dirty = False
-        self.save_button.setText("Lưu cấu hình")
+        self._update_save_label()
         self._log(f"Đã lưu profile: {updated.active}.")
         return True
 
@@ -739,6 +789,7 @@ class MainWindow(QMainWindow):
         self._waiting_for_board = False
         self._retry_error = None
         self._ready = False
+        self._update_save_label()
         if self.ports.findData(port) < 0:
             self.ports.addItem(f"{port} — ESP32 USB", port)
         self.ports.setCurrentIndex(self.ports.findData(port))
@@ -764,6 +815,7 @@ class MainWindow(QMainWindow):
                 self._log(f"Mất USB khi đồng bộ: {exc}.")
                 return
             self._ready = True
+            self._update_save_label()
             self.arm.setEnabled(True)
             self.sync_button.setEnabled(True)
             self.status.setText(f"{self.ports.currentData()} · đã kết nối")
@@ -788,6 +840,7 @@ class MainWindow(QMainWindow):
         self.arm.setEnabled(False)
         self.sync_button.setEnabled(False)
         self._ready = False
+        self._update_save_label()
         self.settle_timer.stop()
         try:
             self._connection.close()

@@ -5,7 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from macropad.config import Action, Config, load_config, parse_hotkey, parse_sequence, save_config
+from macropad.config import (
+    FIRMWARE_DIRECT_KINDS,
+    Action,
+    Config,
+    load_config,
+    parse_hotkey,
+    parse_sequence,
+    save_config,
+)
 from macropad.protocol import Decoder
 
 
@@ -62,6 +70,11 @@ def test_key_sequence_uses_comma_between_steps() -> None:
     Action("sequence", "1,Enter").validate()
     with pytest.raises(ValueError):
         Action("hotkey", "1+Enter").validate()
+
+
+def test_launch_actions_are_supported_by_ble_firmware() -> None:
+    """App and URL actions are translated through Windows Run over BLE."""
+    assert {"app", "url"} <= FIRMWARE_DIRECT_KINDS
 
 
 def test_decoder_chunks_release_and_duplicates() -> None:
