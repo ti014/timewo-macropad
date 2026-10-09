@@ -5,12 +5,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from macropad.config import Action, load_config
-from macropad.ui import MainWindow
+from macropad.ui import MainWindow, MarkedCheckBox
 
 
 @pytest.fixture(scope="module")
@@ -45,6 +45,129 @@ def test_default_safe_state(window) -> None:
     assert len(window.cards) == 4
     window._handle_press(1)
     window._executor.execute.assert_not_called()
+
+
+def test_quick_keys_target_focused_row_and_never_execute(window, app) -> None:
+    """Quick keys configure only the focused row, without injecting host input."""
+    window.show()
+    app.processEvents()
+    card = window.cards[3]
+    card.value._single_line.setFocus()
+    app.processEvents()
+    assert window.active_card is card
+    window.quick_keys.modifier_buttons["win"].click()
+    window.quick_keys.modifier_buttons["shift"].click()
+    window.quick_keys.key_buttons["s"].click()
+    assert card.assignment() == Action("hotkey", "Shift+Win+S")
+    assert window.cards[0].assignment() == Action("hotkey", "Ctrl+C")
+    assert not window.quick_keys.selected_modifiers()
+    assert window._dirty
+    window._executor.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("key", ["Backspace", "Delete", "Esc", "Enter", "Print_Screen"])
+def test_quick_single_keys_round_trip(window, key) -> None:
+    """Special keys remain valid and survive saving and reloading."""
+    window.quick_keys.key_buttons[key.lower()].click()
+    assert window.active_card.assignment() == Action("hotkey", key)
+    assert window._save()
+    window._load_cards()
+    assert window.cards[0].assignment() == Action("hotkey", key)
+
+
+def test_quick_keys_append_to_sequence_without_changing_kind(window) -> None:
+    """A quick key adds one step to a sequence rather than replacing it."""
+    window.active_card.set_assignment(Action("sequence", "1"))
+    window.quick_keys.key_buttons["enter"].click()
+    assert window.active_card.assignment() == Action("sequence", "1,Enter")
+
+
+def test_quick_keys_do_not_overwrite_non_keyboard_actions(window) -> None:
+    """Selecting a website must not let keyboard controls overwrite its URL."""
+    card = window.active_card
+    card.set_assignment(Action("url", "https://example.com"))
+    assert not window.quick_keys.key_buttons["esc"].isEnabled()
+    window._quick_key_pressed("Esc")
+    assert card.assignment() == Action("url", "https://example.com")
+
+
+def test_quick_keys_clear_modifiers_on_row_change(window) -> None:
+    """Pending modifiers cannot leak from one selected row to another."""
+    window.quick_keys.modifier_buttons["ctrl"].click()
+    window._select_card(window.cards[1])
+    window.quick_keys.key_buttons["c"].click()
+    assert window.cards[1].assignment() == Action("hotkey", "C")
+
+
+def test_quick_keys_pause_during_keyboard_recording(window) -> None:
+    """Recording and quick key editing must never compete for one value."""
+    window.active_card._start_recording()
+    assert not window.quick_keys.isEnabled()
+    window.active_card.record.keyPressEvent(
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    )
+    assert window.quick_keys.isEnabled()
+
+
+def test_checkbox_uses_visible_tick_and_keyboard_toggle(window, app) -> None:
+    """The custom tick retains checkbox keyboard interaction and accessible state."""
+    assert isinstance(window.preview, MarkedCheckBox)
+    window.show()
+    app.processEvents()
+    window.preview.setFocus()
+    QApplication.sendEvent(
+        window.preview,
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier),
+    )
+    QApplication.sendEvent(
+        window.preview,
+        QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier),
+    )
+    assert not window.preview.isChecked()
+    unchecked = window.preview.grab().toImage()
+    window.preview.setChecked(True)
+    checked = window.preview.grab().toImage()
+    assert checked != unchecked
+
+
+def test_small_window_scrolls_instead_of_overlapping_rows(window, app) -> None:
+    """Short windows scroll only assignments, while primary actions stay visible."""
+    window.resize(760, 440)
+    window.show()
+    window.log_toggle.setChecked(True)
+    app.processEvents()
+    for current, following in zip(window.cards, window.cards[1:]):
+        assert current.geometry().bottom() < following.geometry().top()
+    buttons = window.quick_keys.key_buttons
+    assert buttons["a"].geometry().bottom() < buttons["tab"].geometry().top()
+    assert window.editor_scroll.verticalScrollBar().maximum() > 0
+    assert window.editor_scroll.horizontalScrollBar().maximum() == 0
+    for control in (window.preview, window.save_button, window.sync_button, window.arm):
+        position = control.mapTo(window.centralWidget(), control.rect().topLeft())
+        assert position.y() >= window.editor_scroll.geometry().bottom()
+        assert window.centralWidget().rect().contains(position)
+        assert window.centralWidget().rect().contains(
+            control.mapTo(window.centralWidget(), control.rect().bottomRight())
+        )
+
+
+@pytest.mark.parametrize("width", [760, 800, 860])
+def test_compact_window_fits_without_scrolling(window, app, width: int) -> None:
+    """Normal controls fit without either scrollbar at supported compact widths."""
+    window.resize(width, 600)
+    window.show()
+    app.processEvents()
+    assert window.size().width() == width
+    assert window.size().height() == 600
+    assert window.editor_scroll.verticalScrollBar().maximum() == 0
+    assert window.editor_scroll.horizontalScrollBar().maximum() == 0
+
+
+def test_initial_window_fits_available_screen(window) -> None:
+    """Default dimensions respect the available screen, including DPI scaling."""
+    available = window.screen().availableGeometry()
+    assert window.width() <= available.width()
+    assert window.height() <= available.height()
 
 
 def test_secondary_controls_are_in_options_menu(window) -> None:
@@ -362,6 +485,7 @@ def test_reading_multiple_events(window) -> None:
 
 def test_render_window(window, app) -> None:
     """Render the real editor for a visual layout check, without device I/O."""
+    window.resize(860, 600)
     window.show()
     app.processEvents()
     artifact = Path(__file__).resolve().parents[1] / ".test-artifacts"

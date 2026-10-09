@@ -5,8 +5,8 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeyEvent, QPainter, QPixmap
+from PySide6.QtCore import QEvent, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QKeyEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QSystemTrayIcon,
@@ -61,32 +63,33 @@ ACTION_GROUPS = (
 )
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 9pt; color: #171717; }
-QMainWindow, QWidget#root { background: #f6edda; }
+QMainWindow, QWidget#root, QScrollArea { background: #f6edda; }
+QScrollArea { border: none; }
 QGroupBox { background: #fffdf5; border: 2px solid #171717; border-radius: 10px;
-            margin-top: 10px; padding: 10px 8px 8px; font-weight: 800; }
+            margin-top: 8px; padding: 6px 4px 4px; font-weight: 800; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
 QFrame#buttonRow { background: #fffdf5; border: 2px solid #171717; border-radius: 10px; }
+QFrame#buttonRow[active="true"] { border-color: #2563eb; }
 QLabel#buttonName { color: #171717; font-weight: 800; }
 QLabel#tableHeader { color: #171717; font-size: 8pt; font-weight: 800; }
 QPushButton, QToolButton { background: #ffd43b; color: #171717; border: 2px solid #171717; border-radius: 8px;
-              min-height: 27px; padding: 4px 10px; font-weight: 700; }
+              min-height: 22px; padding: 3px 8px; font-weight: 700; }
 QPushButton:hover { background: #ffe274; }
-QPushButton:pressed { background: #f4b900; padding-left: 12px; padding-top: 6px; }
+QPushButton:pressed { background: #f4b900; }
 QPushButton:disabled { color: #777064; background: #e5dcc9; border-color: #777064; }
 QPushButton#primary { background: #ff6b9a; }
 QPushButton#primary:hover { background: #ff8ab0; }
 QPushButton#arm:checked { background: #7bdc55; }
+QPushButton:checked { background: #65cfff; }
 QToolButton { background: #fffdf5; }
 QToolButton:hover { background: #e9dfcb; }
 QComboBox, QPlainTextEdit, QLineEdit { background: #ffffff; color: #171717; border: 2px solid #171717;
-                                    border-radius: 8px; min-height: 27px; padding: 4px 7px; }
+                                    border-radius: 8px; min-height: 22px; padding: 3px 6px; }
 QComboBox QAbstractItemView { background: #ffffff; color: #171717; border: 2px solid #171717;
                               selection-background-color: #65cfff; selection-color: #171717; }
 QLabel#muted { color: #5f584c; }
-QLabel#title { color: #171717; font-size: 20pt; font-weight: 800; }
+QLabel#title { color: #171717; font-size: 15pt; font-weight: 800; }
 QCheckBox { spacing: 8px; font-weight: 600; }
-QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid #171717; border-radius: 4px; background: #ffffff; }
-QCheckBox::indicator:checked { background: #65cfff; }
 QMenu { background: #fffdf5; color: #171717; border: 2px solid #171717; }
 QMenu::item:selected { background: #65cfff; }
 QToolTip { background: #171717; color: #fffdf5; border: 1px solid #171717; }
@@ -118,6 +121,88 @@ def app_icon() -> QIcon:
             painter.drawRoundedRect(x, y, 21, 21, 4, 4)
     painter.end()
     return QIcon(pixmap)
+
+
+class MarkedCheckBox(QCheckBox):
+    """Checkbox with a high-contrast tick instead of a colored fill."""
+
+    def paintEvent(self, _event) -> None:
+        """Draw a plain square and a visible check mark."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = QColor("#171717" if self.isEnabled() else "#777064")
+        indicator = QRect(1, (self.height() - 18) // 2, 18, 18)
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRoundedRect(indicator, 3, 3)
+        if self.isChecked():
+            painter.setPen(QPen(color, 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(5, indicator.center().y(), 9, indicator.bottom() - 4)
+            painter.drawLine(9, indicator.bottom() - 4, indicator.right() - 3, indicator.top() + 4)
+        painter.setPen(color)
+        painter.drawText(
+            QRect(28, 0, max(0, self.width() - 28), self.height()),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.text(),
+        )
+        if self.hasFocus():
+            painter.setPen(QPen(color, 1, Qt.PenStyle.DotLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        painter.end()
+
+
+class QuickKeyBar(QGroupBox):
+    """Clickable modifiers and common keys for the selected button row."""
+
+    keyPressed = Signal(str)
+
+    def __init__(self) -> None:
+        super().__init__("Phím nhanh — Nút 1")
+        self.modifier_buttons: dict[str, QPushButton] = {}
+        self.key_buttons: dict[str, QPushButton] = {}
+        layout = QGridLayout(self)
+        layout.setContentsMargins(6, 2, 6, 4)
+        layout.setHorizontalSpacing(5)
+        layout.setVerticalSpacing(4)
+        self.note = QLabel("Chọn phím bổ trợ, rồi chọn phím chính.")
+        self.note.setObjectName("muted")
+        self.note.setWordWrap(True)
+        layout.addWidget(self.note, 0, 0, 1, 4)
+        for column, token in enumerate(("ctrl", "alt", "shift", "win"), start=4):
+            label = token.title()
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setToolTip(f"Thêm {token.title()} vào tổ hợp")
+            button.toggled.connect(
+                lambda checked, button=button, label=label: button.setText(
+                    f"{label} ✓" if checked else label
+                )
+            )
+            self.modifier_buttons[token] = button
+            layout.addWidget(button, 0, column)
+        rows = (
+            ("A", "C", "V", "X", "Z", "S", "L", "F4"),
+            ("Tab", "Enter", "Backspace", "Delete", "Esc", "Space", "Print_Screen"),
+        )
+        for row, keys in enumerate(rows, start=1):
+            for column, token in enumerate(keys):
+                label = "Print Screen" if token == "Print_Screen" else token
+                button = QPushButton(label)
+                button.setToolTip(f"Gán phím {label}; không gửi phím vào máy tính.")
+                button.clicked.connect(lambda _checked=False, value=token: self.keyPressed.emit(value))
+                self.key_buttons[token.lower()] = button
+                layout.addWidget(button, row, column)
+        self.setMinimumHeight(self.sizeHint().height())
+
+    def clear_modifiers(self) -> None:
+        """Clear modifier toggles after a shortcut is committed or focus changes."""
+        for button in self.modifier_buttons.values():
+            button.setChecked(False)
+
+    def selected_modifiers(self) -> list[str]:
+        """Return selected modifiers in stable keyboard order."""
+        return [token for token, button in self.modifier_buttons.items() if button.isChecked()]
 
 
 class ShortcutCaptureButton(QPushButton):
@@ -190,7 +275,7 @@ class ActionValueEditor(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setFixedHeight(38)
+        self.setFixedHeight(32)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._stack = QStackedWidget(self)
         self._single_line = QLineEdit(self)
@@ -267,6 +352,8 @@ class ButtonEditor(QFrame):
     """Editable assignment for one physical button."""
 
     captureStarted = Signal()
+    captureFinished = Signal()
+    focused = Signal()
 
     def __init__(self, number: int, pin: int) -> None:
         """Build an action selector and literal value editor.
@@ -277,10 +364,10 @@ class ButtonEditor(QFrame):
         """
         super().__init__()
         self.setObjectName("buttonRow")
-        self.setFixedHeight(56)
+        self.setFixedHeight(46)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(6)
         self.title = QLabel(f"Nút {number}")
         self.title.setToolTip(f"BTN{number} / GPIO{pin}")
@@ -312,6 +399,18 @@ class ButtonEditor(QFrame):
         self.record.cancelled.connect(self._recording_cancelled)
         self.record.invalid.connect(self._recording_invalid)
         self.browse.clicked.connect(self._browse)
+        for widget in (
+            self,
+            self.title,
+            self.summary,
+            self.kind,
+            self.value,
+            self.value._single_line,
+            self.value._multiline,
+            self.record,
+            self.browse,
+        ):
+            widget.installEventFilter(self)
         layout.addWidget(self.kind)
         layout.addWidget(self.value, 1)
         tools = QWidget()
@@ -326,6 +425,18 @@ class ButtonEditor(QFrame):
         self._recording = False
         add_hard_shadow(self)
         self._update_hint()
+
+    def eventFilter(self, watched, event) -> bool:
+        """Mark this row active whenever one of its controls receives focus."""
+        if event.type() in {QEvent.Type.FocusIn, QEvent.Type.MouseButtonPress}:
+            self.focused.emit()
+        return super().eventFilter(watched, event)
+
+    def set_active(self, active: bool) -> None:
+        """Highlight the row targeted by the quick-key bar."""
+        self.setProperty("active", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def _update_hint(self) -> None:
         """Explain accepted input for the selected action."""
@@ -372,6 +483,7 @@ class ButtonEditor(QFrame):
         self.kind.setEnabled(True)
         self.value.setEnabled(True)
         self._update_hint()
+        self.captureFinished.emit()
 
     def _shortcut_recorded(self, shortcut: str) -> None:
         """Put the captured shortcut into the value editor."""
@@ -451,29 +563,36 @@ class MainWindow(QMainWindow):
         self._retry_error: str | None = None
         self.setWindowTitle("timewo-macropad — USB/BLE v0.9")
         self.setWindowIcon(app_icon())
-        self.resize(880, 620)
-        self.setMinimumSize(840, 590)
+        available = self.screen().availableGeometry()
+        self.setMinimumSize(min(760, available.width() - 32), min(440, available.height() - 64))
+        self.resize(min(860, available.width() - 32), min(600, available.height() - 64))
         self.setStyleSheet(STYLE)
         root = QWidget()
         root.setObjectName("root")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(8)
+        heading = QHBoxLayout()
+        heading.setSpacing(8)
         title = QLabel("timewo-macropad")
         title.setObjectName("title")
-        layout.addWidget(title)
+        heading.addWidget(title)
+        heading.addStretch()
+        layout.addLayout(heading)
 
-        device_group = QGroupBox("Thiết bị")
+        device_group = QWidget()
         device_bar = QHBoxLayout(device_group)
-        device_bar.setContentsMargins(0, 2, 0, 0)
+        device_bar.setContentsMargins(0, 0, 3, 3)
         self.ports = QComboBox()
-        self.ports.setMinimumWidth(250)
+        self.ports.setMinimumContentsLength(18)
+        self.ports.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.refresh = QPushButton("Làm mới")
         self.refresh.clicked.connect(self._refresh_ports)
         self.connect_button = QPushButton("Kết nối")
         self.connect_button.clicked.connect(self._toggle_connection)
         self.status = QLabel("Chưa kết nối")
+        self.status.setWordWrap(True)
         device_bar.setSpacing(6)
         device_bar.addWidget(self.ports, 1)
         device_bar.addWidget(self.refresh)
@@ -481,16 +600,17 @@ class MainWindow(QMainWindow):
         device_bar.addWidget(self.status)
         layout.addWidget(device_group)
 
-        profile_group = QGroupBox("Profile cấu hình")
-        profile_bar = QHBoxLayout(profile_group)
-        profile_bar.setContentsMargins(0, 2, 0, 0)
-        profile_bar.setSpacing(6)
         self.profiles = QComboBox()
+        self.profiles.setMinimumContentsLength(12)
+        self.profiles.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.profiles.setMaximumWidth(220)
         self.profiles.addItems(self._config.profiles)
         self.profiles.setCurrentText(self._config.active)
         self.profiles.currentTextChanged.connect(self._switch_profile)
-        profile_bar.addWidget(QLabel("Đang dùng:"))
-        profile_bar.addWidget(self.profiles, 1)
+        heading.addWidget(QLabel("Profile:"))
+        heading.addWidget(self.profiles, 1)
         self.options = QToolButton()
         self.options.setText("Tùy chọn")
         self.options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -501,14 +621,26 @@ class MainWindow(QMainWindow):
         self.log_toggle.setCheckable(True)
         options_menu.addAction("Ẩn xuống khay", self._hide_to_tray)
         self.options.setMenu(options_menu)
-        profile_bar.addWidget(self.options)
-        layout.addWidget(profile_group)
+        heading.addWidget(self.options)
+
+        # Only the editors scroll: connection and primary actions remain reachable.
+        self.editor_scroll = QScrollArea()
+        self.editor_scroll.setWidgetResizable(True)
+        editor_page = QWidget()
+        editor_page.setObjectName("root")
+        editor_layout = QVBoxLayout(editor_page)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.setSpacing(8)
+        editor_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.editor_scroll.setWidget(editor_page)
+        layout.addWidget(self.editor_scroll, 1)
 
         assignment_group = QGroupBox("Gán chức năng cho 4 nút")
         table = QVBoxLayout(assignment_group)
-        table.setSpacing(9)
+        table.setContentsMargins(6, 4, 6, 6)
+        table.setSpacing(5)
         header = QHBoxLayout()
-        header.setContentsMargins(8, 0, 8, 0)
+        header.setContentsMargins(6, 0, 6, 0)
         header.setSpacing(6)
         for text, width in (("Nút", 52), ("Chức năng", 230)):
             label = QLabel(text)
@@ -524,22 +656,33 @@ class MainWindow(QMainWindow):
         for index, pin in enumerate((3, 4, 5, 6)):
             card = ButtonEditor(index + 1, pin)
             card.kind.currentIndexChanged.connect(self._edited)
+            card.kind.currentIndexChanged.connect(self._refresh_quick_keys)
             card.value.textChanged.connect(self._edited)
             card.captureStarted.connect(self._pause_macro)
+            card.captureStarted.connect(self._refresh_quick_keys)
+            card.captureFinished.connect(self._refresh_quick_keys)
+            card.focused.connect(lambda card=card: self._select_card(card))
             self.cards.append(card)
             table.addWidget(card)
         table.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(assignment_group)
+        assignment_group.setMinimumHeight(assignment_group.sizeHint().height())
+        editor_layout.addWidget(assignment_group)
 
-        run_group = QGroupBox("Chạy macro")
+        self.active_card = self.cards[0]
+        self.quick_keys = QuickKeyBar()
+        self.quick_keys.keyPressed.connect(self._quick_key_pressed)
+        editor_layout.addWidget(self.quick_keys)
+        self._select_card(self.active_card)
+
+        run_group = QWidget()
         controls = QHBoxLayout(run_group)
-        controls.setContentsMargins(0, 2, 0, 0)
+        controls.setContentsMargins(0, 0, 3, 3)
         self.arm = QPushButton("Bật macro")
         self.arm.setObjectName("arm")
         self.arm.setCheckable(True)
         self.arm.setEnabled(False)
         self.arm.toggled.connect(self._arm_changed)
-        self.preview = QCheckBox("Chỉ kiểm tra nút")
+        self.preview = MarkedCheckBox("Chỉ kiểm tra nút")
         self.preview.setToolTip("Nhận tín hiệu từ nút nhưng không thực hiện macro.")
         self.preview.setChecked(True)
         self.preview.toggled.connect(self._pause_macro)
@@ -569,6 +712,7 @@ class MainWindow(QMainWindow):
             "Rút/cắm USB sẽ tự khôi phục kết nối và trạng thái macro."
         )
         help_label.setObjectName("muted")
+        help_label.setWordWrap(True)
         layout.addWidget(help_label)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -577,7 +721,7 @@ class MainWindow(QMainWindow):
         self.log.setMaximumHeight(70)
         self.log.hide()
         self.log_toggle.toggled.connect(self.log.setVisible)
-        layout.addWidget(self.log)
+        editor_layout.addWidget(self.log)
         self._load_cards()
         self._log("Sẵn sàng. USB dùng app; BLE dùng profile đã đồng bộ lên board.")
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
@@ -608,6 +752,47 @@ class MainWindow(QMainWindow):
         self.watch_timer.timeout.connect(self._watch_connection)
         if not testing:
             self.watch_timer.start()
+
+    def _select_card(self, card: ButtonEditor) -> None:
+        """Set the target row for quick-key clicks and show it clearly."""
+        changed = self.active_card is not card
+        self.active_card = card
+        for candidate in self.cards:
+            candidate.set_active(candidate is card)
+        if hasattr(self, "quick_keys"):
+            if changed:
+                self.quick_keys.clear_modifiers()
+            self._refresh_quick_keys()
+
+    def _refresh_quick_keys(self) -> None:
+        """Keep quick keys aligned with the selected action and capture state."""
+        if not hasattr(self, "quick_keys"):
+            return
+        card = self.active_card
+        number = self.cards.index(card) + 1
+        self.quick_keys.setTitle(f"Phím nhanh — Nút {number}")
+        kind = card.kind.currentData()
+        enabled = kind in {"hotkey", "sequence"} and not any(c._recording for c in self.cards)
+        self.quick_keys.setEnabled(enabled)
+        if not enabled:
+            self.quick_keys.clear_modifiers()
+        self.quick_keys.note.setText(
+            "Chọn phím bổ trợ, rồi chọn phím chính."
+            if enabled
+            else "Chọn Phím tắt hoặc Chuỗi phím để dùng."
+        )
+
+    def _quick_key_pressed(self, key: str) -> None:
+        """Commit a shortcut assembled from the quick-key bar."""
+        if not self.quick_keys.isEnabled():
+            return
+        modifiers = self.quick_keys.selected_modifiers()
+        value = "+".join([*(modifier.title() for modifier in modifiers), key])
+        if self.active_card.kind.currentData() == "sequence":
+            existing = self.active_card.value.toPlainText().strip()
+            value = f"{existing},{value}" if existing else value
+        self.active_card.value.setPlainText(value)
+        self.quick_keys.clear_modifiers()
 
     def _log(self, message: str) -> None:
         """Append bounded, timestamped status without logging macro text."""
