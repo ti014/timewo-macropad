@@ -16,12 +16,15 @@ public:
 
     bool bleEnabled() const;
     void setBleEnabled(bool enabled);
+    bool standalone() const { return standalone_; }
+    void setStandalone(bool enabled);
 
 private:
     static constexpr const char* kNamespace = "macropad";
     MacroAction actions_[kButtonCount]{};
     MacroAction staged_[kButtonCount]{};
     bool bleEnabled_ = true;
+    bool standalone_ = false;
     Preferences preferences_;
 
     void setDefaults();

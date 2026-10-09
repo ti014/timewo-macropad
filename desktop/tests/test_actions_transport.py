@@ -83,11 +83,15 @@ def test_release_attempts_all_keys_on_failure() -> None:
 
 
 def test_text_and_none() -> None:
-    """Unicode is passed literally; disabled mappings do nothing."""
+    """Unicode is pasted literally instead of passing ASCII keys through Telex."""
     keyboard = Mock()
     executor = Executor(keyboard)
-    executor.execute(Action("text", "Xin chào Việt Nam"))
-    keyboard.type.assert_called_once_with("Xin chào Việt Nam")
+    app = Mock()
+    with patch("macropad.actions.QGuiApplication.instance", return_value=app):
+        executor.execute(Action("text", "Xin chào Việt Nam"))
+    app.clipboard().setText.assert_called_once_with("Xin chào Việt Nam")
+    keyboard.type.assert_not_called()
+    assert [call.args[0] for call in keyboard.press.call_args_list] == [Key.ctrl, "v"]
     keyboard.reset_mock()
     executor.execute(Action())
     assert keyboard.mock_calls == []
@@ -128,6 +132,34 @@ def test_serial_lifecycle() -> None:
     connection.close()
     handle.close.assert_called_once()
     assert not connection.connected
+
+
+def test_bridge_lease_is_renewed_then_released_on_close() -> None:
+    """Bridge firmware types locally unless the app keeps renewing its lease."""
+    handle = Mock(is_open=True, in_waiting=0)
+    handle.write.side_effect = len
+    handle.read.return_value = b"BRIDGE 1 42 0\n"
+    connection = Connection()
+    with patch("macropad.transport.serial.Serial", return_value=handle):
+        connection.open("COM7")
+    with patch("macropad.transport.monotonic", side_effect=[10.0, 10.5, 11.2]):
+        for _ in range(3):
+            connection.poll()
+    connection.close()
+    writes = [call.args[0] for call in handle.write.call_args_list]
+    assert writes == [b"APP\n", b"APP\n", b"APP OFF\n"]
+
+
+def test_legacy_firmware_gets_no_lease() -> None:
+    """Old firmware without the bridge never receives unknown commands."""
+    handle = Mock(is_open=True, in_waiting=0)
+    handle.read.return_value = b""
+    connection = Connection()
+    with patch("macropad.transport.serial.Serial", return_value=handle):
+        connection.open("COM7")
+    connection.poll()
+    connection.close()
+    handle.write.assert_not_called()
 
 
 def test_serial_open_failure_closes_handle() -> None:

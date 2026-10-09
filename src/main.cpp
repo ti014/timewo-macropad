@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <BLEDevice.h>
 
 #include "config.h"
 #include "profile_store.h"
@@ -12,26 +13,59 @@ ProfileStore profile;
 UsbProtocol usb;
 BleController ble;
 bool serialWasConnected = false;
+uint32_t bootSession = 0;
+uint32_t eventSequence = 0;
+bool appLeased = false;
+uint32_t appLeaseAtMs = 0;
+
+// A running app renews this lease; without it (app closed, crashed, or another
+// machine) the board itself is the keyboard, so it works anywhere it is paired.
+bool appPresent() {
+    if (appLeased && static_cast<uint32_t>(millis() - appLeaseAtMs) >= config::kAppLeaseMs) {
+        appLeased = false;
+    }
+    return appLeased;
+}
+
+void status() {
+    ble.bridge().updateState(profile.standalone(), bootSession, eventSequence);
+    if (usb.connected()) {
+        Serial.printf("BRIDGE 1 %lu %u\n", static_cast<unsigned long>(bootSession),
+                      profile.standalone() ? 1 : 0);
+        Serial.printf("BLE_ADDR %s\n", BLEDevice::getAddress().toString().c_str());
+    }
+    usb.printStatus(buttons, profile, ble.connected());
+}
 
 void handleButton(const ButtonEvent& event) {
-    usb.printButton(event, buttons.pressCount(event.number));
+    const bool local = profile.standalone() || !appPresent();
+    // An app must not also execute a press the board types itself.
+    if (!local) usb.printButton(event, buttons.pressCount(event.number));
     if (event.type == ButtonEventType::LongPressed &&
         event.number == config::kBleToggleButton) {
         profile.setBleEnabled(!profile.bleEnabled());
-        usb.printMessage(profile.bleEnabled() ? "BLE enabled; restarting."
-                                              : "BLE disabled; restarting.");
-        delay(120);
-        ESP.restart();
+        ble.setEnabled(profile.bleEnabled());
+        status();
         return;
     }
-    if (event.type != ButtonEventType::Pressed || usb.connected()) return;
-    ble.execute(profile.action(event.number));
+    if (event.type != ButtonEventType::Pressed) return;
+    ++eventSequence;
+    ble.bridge().updateState(profile.standalone(), bootSession, eventSequence);
+    if (local) {
+        ble.execute(profile.action(event.number));
+        return;
+    }
+    if (usb.connected()) {
+        Serial.printf("EVT %lu %lu %u\n", static_cast<unsigned long>(bootSession),
+                      static_cast<unsigned long>(eventSequence), event.number);
+    }
+    ble.bridge().notifyPress(event.number, bootSession, eventSequence);
 }
 
 void handleUsbCommand(const UsbCommand& command) {
     switch (command.type) {
         case UsbCommandType::Status:
-            usb.printStatus(buttons, profile, ble.connected());
+            status();
             break;
         case UsbCommandType::SyncAction:
             usb.printMessage(profile.setStaged(command.button, command.actionKind, command.value)
@@ -44,10 +78,19 @@ void handleUsbCommand(const UsbCommand& command) {
             break;
         case UsbCommandType::SetBle:
             profile.setBleEnabled(command.bleEnabled);
-            usb.printMessage(command.bleEnabled ? "BLE ON; restarting."
-                                                : "BLE OFF; restarting.");
-            delay(120);
-            ESP.restart();
+            ble.setEnabled(command.bleEnabled);
+            status();
+            break;
+        case UsbCommandType::SetMode:
+            profile.setStandalone(command.standalone);
+            status();
+            break;
+        case UsbCommandType::AppLease:
+            appLeased = true;
+            appLeaseAtMs = millis();
+            break;
+        case UsbCommandType::AppRelease:
+            appLeased = false;
             break;
         case UsbCommandType::None:
             break;
@@ -59,18 +102,21 @@ void setup() {
     Serial.begin(config::kSerialBaud);
     buttons.begin();
     profile.begin();
-    ble.begin(profile.bleEnabled());
+    bootSession = esp_random();
+    ble.begin(profile.bleEnabled(), buttons.pressed(config::kBleForgetButton));
+    status();
 }
 
 void loop() {
     const bool serialConnected = usb.connected();
     if (serialConnected && !serialWasConnected) {
-        usb.printStatus(buttons, profile, ble.connected());
+        status();
     }
     serialWasConnected = serialConnected;
 
     UsbCommand command;
     if (usb.update(command)) handleUsbCommand(command);
+    if (ble.bridge().pollCommand(command)) handleUsbCommand(command);
     buttons.update(millis(), handleButton);
     delay(1);
 }

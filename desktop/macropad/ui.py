@@ -35,6 +35,8 @@ from PySide6.QtWidgets import (
 )
 
 from .actions import Executor
+from .bridge_protocol import ButtonPress
+from .bridge_ui import BridgeUiMixin
 from .config import (
     FIRMWARE_DIRECT_KINDS,
     FIRMWARE_KIND_IDS,
@@ -53,7 +55,7 @@ HINTS = {
     "close_app": "G\u1eedi Alt+F4 \u0111\u1ec3 \u0111\u00f3ng c\u1eeda s\u1ed5/\u1ee9ng d\u1ee5ng \u0111ang \u0111\u01b0\u1ee3c ch\u1ecdn.",
     "none": "Nút này sẽ không thực hiện hành động.",
     "hotkey": "Nhập tổ hợp hoặc bấm Bắt phím. Ví dụ: Ctrl+Shift+S, Delete, Print_Screen",
-    "text": "Nhập nội dung cần gõ (tối đa 2000 ký tự). Xuống dòng cũng gửi phím Enter.",
+    "text": "Dán Unicode qua clipboard (tối đa 2000 ký tự), không qua bộ gõ. Thay nội dung clipboard; ứng dụng đích cần hỗ trợ Ctrl+V.",
     "app": "Chọn file .exe. Không nhập lệnh, tham số hoặc đường dẫn shortcut .lnk.",
     "url": "Ví dụ: https://github.com — mở bằng trình duyệt mặc định.",
 }
@@ -534,7 +536,7 @@ class ButtonEditor(QFrame):
         self.value.setPlainText(action.value)
 
 
-class MainWindow(QMainWindow):
+class MainWindow(BridgeUiMixin, QMainWindow):
     """Profile editor and serial macro controller with explicit arming."""
 
     def __init__(self, config_path: Path, *, testing: bool = False) -> None:
@@ -557,11 +559,12 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._ready = False
         self._testing = testing
+        self._init_bridge()
         self._reconnect_target: UsbIdentity | None = None
         self._waiting_for_board = False
         self._resume_macro = False
         self._retry_error: str | None = None
-        self.setWindowTitle("timewo-macropad — USB/BLE v0.9")
+        self.setWindowTitle("timewo-macropad — USB/BLE v0.10")
         self.setWindowIcon(app_icon())
         available = self.screen().availableGeometry()
         self.setMinimumSize(min(760, available.width() - 32), min(440, available.height() - 64))
@@ -621,6 +624,7 @@ class MainWindow(QMainWindow):
         self.log_toggle.setCheckable(True)
         options_menu.addAction("Ẩn xuống khay", self._hide_to_tray)
         self.options.setMenu(options_menu)
+        self._build_bridge_controls(device_bar, options_menu)
         heading.addWidget(self.options)
 
         # Only the editors scroll: connection and primary actions remain reachable.
@@ -689,25 +693,21 @@ class MainWindow(QMainWindow):
         self.save_button = QPushButton("Lưu cấu hình")
         self.save_button.setObjectName("primary")
         self.save_button.clicked.connect(self._save)
-        self.save_button.setToolTip("Lưu profile vào máy tính.")
-        self.sync_button = QPushButton("Đồng bộ board")
-        self.sync_button.setEnabled(False)
-        self.sync_button.clicked.connect(self._sync_profile)
-        self.sync_button.setToolTip("Chép profile hiện tại vào bộ nhớ của board để dùng BLE.")
+        self.save_button.setToolTip("Lưu profile vào máy tính và chép vào board đang kết nối.")
         add_hard_shadow(self.arm, offset=3)
-        for action_button in (self.refresh, self.connect_button, self.save_button, self.sync_button):
+        for action_button in (self.refresh, self.connect_button, self.save_button):
             add_hard_shadow(action_button, offset=3)
         controls.setSpacing(8)
         controls.addWidget(self.preview, 1)
         controls.addWidget(self.save_button)
-        controls.addWidget(self.sync_button)
         controls.addWidget(self.arm)
         layout.addWidget(run_group)
 
         help_label = QLabel(
-            "USB: cần app chạy. BLE: dùng cấu hình đã lưu lên board."
+            "App đang mở: app chạy macro. Tắt app hoặc sang máy khác: board tự gõ phím tắt qua Bluetooth."
         )
         help_label.setToolTip(
+            "Lưu là board nhận profile ngay. Mở app, URL và văn bản chỉ chạy khi app đang mở. "
             "Macro tác động vào cửa sổ đang chọn. Khi sửa cấu hình, macro tự tạm dừng. "
             "Rút/cắm USB sẽ tự khôi phục kết nối và trạng thái macro."
         )
@@ -723,7 +723,7 @@ class MainWindow(QMainWindow):
         self.log_toggle.toggled.connect(self.log.setVisible)
         editor_layout.addWidget(self.log)
         self._load_cards()
-        self._log("Sẵn sàng. USB dùng app; BLE dùng profile đã đồng bộ lên board.")
+        self._log("Sẵn sàng. App mở thì app chạy macro; tắt app thì board tự gõ phím tắt đã lưu.")
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
         self.tray.setToolTip("Macropad Configurator — tạm dừng")
         menu = QMenu(self)
@@ -752,6 +752,8 @@ class MainWindow(QMainWindow):
         self.watch_timer.timeout.connect(self._watch_connection)
         if not testing:
             self.watch_timer.start()
+            if self._bridge_settings.value("ble/enabled", False, type=bool):
+                self.bluetooth_button.setChecked(True)
 
     def _select_card(self, card: ButtonEditor) -> None:
         """Set the target row for quick-key clicks and show it clearly."""
@@ -824,8 +826,13 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._update_save_label()
 
-    def _save(self) -> bool:
-        """Validate and atomically save all current button assignments."""
+    def _save(self, *, push: bool = True) -> bool:
+        """Validate and atomically save all current button assignments.
+
+        Args:
+            push: Also copy the saved profile to a connected board, so it keeps
+                working on other machines and after the app closes.
+        """
         self._pause_macro()
         try:
             updated = deepcopy(self._config)
@@ -838,33 +845,47 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._update_save_label()
         self._log(f"Đã lưu profile: {updated.active}.")
+        if push and self._board_linked():
+            self._push_profile()
         return True
+
+    def _board_linked(self) -> bool:
+        return (self._ready and self._connection.connected) or self._ble_ready
 
     def _sync_profile(self) -> bool:
         """Save the active profile and copy it to the board's nonvolatile storage."""
-        if not self._ready or not self._connection.connected:
+        if not self._board_linked():
             self._error("Hãy kết nối và chờ board đồng bộ trạng thái trước.")
             return False
-        if not self._save():
-            return False
+        return self._save(push=False) and self._push_profile(report=self._error)
+
+    def _push_profile(self, report=None) -> bool:
+        """Copy the saved active profile to the board; unchanged entries cost no flash."""
+        report = report or self._log
         unsupported = []
+        commands = []
         try:
             for index, action in enumerate(self._config.profiles[self._config.active], start=1):
-                encoded = action.value.encode("utf-8").hex().upper() or "-"
+                # The board never runs these kinds, so it needs no copy of their value.
+                direct = action.kind in FIRMWARE_DIRECT_KINDS
+                encoded = (action.value.encode("utf-8").hex().upper() if direct else "") or "-"
                 if len(encoded) > 1024:
                     raise ValueError(f"BTN{index} có giá trị quá dài để lưu trên board.")
-                self._connection.send_command(
-                    f"SYNC {index} {FIRMWARE_KIND_IDS[action.kind]} {encoded}"
-                )
-                if action.kind not in FIRMWARE_DIRECT_KINDS:
+                commands.append(f"SYNC {index} {FIRMWARE_KIND_IDS[action.kind]} {encoded}")
+                if not direct:
                     unsupported.append(f"BTN{index} ({KINDS[action.kind]})")
-            self._connection.send_command("SYNC_COMMIT")
+            commands.append("SYNC_COMMIT")
+            if self._ready and self._connection.connected:
+                for command in commands:
+                    self._connection.send_command(command)
+            else:
+                self._ble.send_commands(commands)
         except (OSError, ValueError) as exc:
-            self._error(f"Không đồng bộ được profile lên board: {exc}")
+            report(f"Không đồng bộ được profile lên board: {exc}")
             return False
-        message = f"Đã đồng bộ profile '{self._config.active}' lên board."
+        message = f"Board đã có profile '{self._config.active}'; tắt app board vẫn tự chạy phím tắt."
         if unsupported:
-            message += " BLE chỉ chạy trực tiếp: " + ", ".join(unsupported) + "."
+            message += " Cần app mở: " + ", ".join(unsupported) + "."
         self._log(message)
         return True
 
@@ -899,6 +920,8 @@ class MainWindow(QMainWindow):
                 self._config = updated
                 self._load_cards()
                 self._log(f"Đã chọn profile: {name}. Bấm Bật macro khi sẵn sàng.")
+                if self._board_linked():
+                    self._push_profile()
                 return
             except (OSError, ValueError) as exc:
                 self._error(str(exc))
@@ -1000,11 +1023,16 @@ class MainWindow(QMainWindow):
                 self._log(f"Mất USB khi đồng bộ: {exc}.")
                 return
             self._ready = True
+            self._check_bridge_identity()
             self._update_save_label()
             self.arm.setEnabled(True)
-            self.sync_button.setEnabled(True)
             self.status.setText(f"{self.ports.currentData()} · đã kết nối")
             self._log("Đã kết nối. Bạn có thể nhấn nút để kiểm tra.")
+            # The board may hold an older profile (edited offline, other machine).
+            self._push_profile()
+            if isinstance(self._connection.bridge_session, int):
+                self._apply_device_mode(self._connection.standalone)
+            self._bridge_status()
             resume = self._resume_macro
             self._resume_macro = False
             if resume and not self._dirty and not self.preview.isChecked():
@@ -1015,15 +1043,15 @@ class MainWindow(QMainWindow):
     def _disconnect(self, *, recover: bool = False) -> None:
         """Release USB, preserving prior intent only after unexpected device loss."""
         retry = recover and self._reconnect_target is not None
+        ble_handover = recover and self._ble_ready and not self._standalone
         resume = (
-            retry
+            (retry or ble_handover or (recover and self.bluetooth_button.isChecked()))
             and (self.arm.isChecked() or self._resume_macro)
             and not self._dirty
             and not self.preview.isChecked()
         )
         self.arm.setChecked(False)
         self.arm.setEnabled(False)
-        self.sync_button.setEnabled(False)
         self._ready = False
         self._update_save_label()
         self.settle_timer.stop()
@@ -1046,7 +1074,13 @@ class MainWindow(QMainWindow):
             self._reconnect_target = None
             self.reconnect_timer.stop()
             self.status.setText("Chưa kết nối")
-            self._log("Đã ngắt kết nối, macro đang tạm dừng.")
+            self._log("Đã ngắt kết nối; board tự gõ phím tắt đã lưu qua Bluetooth.")
+        if ble_handover:
+            self.arm.setEnabled(True)
+            self._bridge_status()
+            if resume:
+                self._resume_macro = False
+                self.arm.setChecked(True)
 
     def _retry_connection(self) -> None:
         """Reconnect only the remembered board; a busy port retries without dialogs."""
@@ -1084,6 +1118,7 @@ class MainWindow(QMainWindow):
         """Cancel both active macros and any pending automatic resume."""
         was_pending = self._resume_macro
         self._resume_macro = False
+        self._ble.set_capture(False)
         self.arm.setChecked(False)
         if was_pending:
             self._log("Đã hủy khôi phục macro. Khi cắm lại, macro vẫn tạm dừng.")
@@ -1093,7 +1128,7 @@ class MainWindow(QMainWindow):
         if not enabled:
             self._resume_macro = False
         if enabled:
-            if not self._ready or self.preview.isChecked() or self._dirty:
+            if not (self._ready or self._ble_ready) or self._standalone or self.preview.isChecked() or self._dirty:
                 self.arm.setChecked(False)
                 self._log("Hãy lưu cấu hình và bỏ chọn Chỉ kiểm tra nút trước khi bật macro.")
                 return
@@ -1103,6 +1138,12 @@ class MainWindow(QMainWindow):
                 self._disconnect(recover=True)
                 self._error(str(exc))
                 return
+        try:
+            self._ble.set_capture(enabled)
+        except OSError as exc:
+            self.arm.setChecked(False)
+            self._error(str(exc))
+            return
         self.arm.setText("Tạm dừng macro" if enabled else "Bật macro")
         self.tray.setToolTip("Macropad Configurator — " + ("đang bật" if enabled else "tạm dừng"))
         self._log(
@@ -1112,16 +1153,29 @@ class MainWindow(QMainWindow):
     def _poll(self) -> None:
         """Read events on the GUI loop and stop safely on USB failure."""
         try:
-            for button in self._connection.poll():
-                self._handle_press(button)
+            events = self._connection.poll()
+            self._check_bridge_identity()
+            if (self._ready and isinstance(self._connection.bridge_session, int)
+                    and self._connection.standalone != self._standalone):
+                self._apply_device_mode(self._connection.standalone)
+            for button in events:
+                if self._ready:
+                    self._handle_press(button)
+                else:
+                    self._log(f"BTN{button}: nhận nút, đang chờ đồng bộ USB.")
         except OSError as exc:
             self._disconnect(recover=True)
             self._log(f"Mất kết nối USB: {exc}.")
+        self._poll_ble()
+        if self._ready:
+            self._bridge_status()
 
     def _handle_press(self, button: int) -> None:
         """Execute only when armed and another application has focus."""
+        if isinstance(button, ButtonPress) and not self._event_gate.accept(button):
+            return
         action = self._config.profiles[self._config.active][button - 1]
-        if not self._ready or not self.arm.isChecked() or self.preview.isChecked():
+        if not (self._ready or self._ble_ready) or self._standalone or not self.arm.isChecked() or self.preview.isChecked():
             self._log(f"BTN{button}: nhận nút, không chạy macro.")
             return
         if QApplication.activeWindow() is not None:
@@ -1170,6 +1224,7 @@ class MainWindow(QMainWindow):
             return
         self.timer.stop()
         self.watch_timer.stop()
+        self._ble.stop()
         self._disconnect()
         self.tray.hide()
         event.accept()

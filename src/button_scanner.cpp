@@ -29,6 +29,9 @@ void ButtonScanner::begin() {
         states_[i].stablePressed = pressed;
         states_[i].lastChangeMs = now;
         states_[i].pressedAtMs = now;
+        // Held at power-on (boot gesture or a stuck switch): ignore it until
+        // released, so it can neither run a macro nor toggle Bluetooth.
+        states_[i].longReported = pressed;
     }
 }
 

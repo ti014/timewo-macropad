@@ -8,6 +8,8 @@ from serial.tools import list_ports
 from .protocol import Decoder
 
 UsbIdentity = tuple[int, int, str]
+# Firmware drops the lease after 3 s; renew well inside that window.
+LEASE_INTERVAL = 1.0
 
 
 class Connection:
@@ -19,6 +21,7 @@ class Connection:
         self._decoder = Decoder()
         self._pending_since: float | None = None
         self._last_status = 0.0
+        self._next_lease = 0.0
 
     @property
     def connected(self) -> bool:
@@ -51,11 +54,32 @@ class Connection:
         self._decoder = Decoder()
         self._pending_since = None
         self._last_status = 0.0
+        self._next_lease = 0.0
 
     @property
     def confirmed(self) -> bool:
         """Return whether this session received a complete firmware status reply."""
         return self._decoder.status_count > 0
+
+    @property
+    def bridge_session(self) -> int | None:
+        """Boot ID shared with BLE, or None for legacy firmware."""
+        return self._decoder.bridge_session
+
+    @property
+    def ble_enabled(self) -> bool | None:
+        """Last radio state, distinct from an ordinary BLE disconnection."""
+        return self._decoder.ble_enabled
+
+    @property
+    def ble_address(self) -> str | None:
+        """Bluetooth address reported by the selected USB board."""
+        return self._decoder.ble_address
+
+    @property
+    def standalone(self) -> bool:
+        """Last device mode confirmed by a firmware status snapshot."""
+        return self._decoder.standalone
 
     def request_status(self) -> None:
         """Ask the existing firmware for a harmless four-button status snapshot.
@@ -110,7 +134,17 @@ class Connection:
         """
         if self._serial is None:
             return []
-        return self._decode(self._serial.read(min(self._serial.in_waiting, 4096)))
+        events = self._decode(self._serial.read(min(self._serial.in_waiting, 4096)))
+        self._renew_lease()
+        return events
+
+    def _renew_lease(self) -> None:
+        """Tell bridge firmware the app executes presses, so it must not type them too."""
+        now = monotonic()
+        if self._decoder.bridge_session is None or now < self._next_lease:
+            return
+        self._next_lease = now + LEASE_INTERVAL
+        self.send_command("APP")
 
     def discard_pending(self) -> None:
         """Consume queued events before arming so old presses cannot execute.
@@ -131,6 +165,13 @@ class Connection:
         if self._serial is not None:
             connection = self._serial
             self._serial = None
+            if self._decoder.bridge_session is not None:
+                try:
+                    # Hand the keys back now instead of after the lease times out.
+                    connection.write(b"APP OFF\n")
+                    connection.flush()
+                except (OSError, serial.SerialException):
+                    pass
             connection.close()
 
 

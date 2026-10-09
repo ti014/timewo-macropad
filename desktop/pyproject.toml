@@ -1,9 +1,9 @@
 [project]
 name = "macropad-configurator"
-version = "0.9.0"
-description = "USB macro configurator for the four-button ESP32-C3 firmware"
+version = "0.10.0"
+description = "USB/BLE companion and macro configurator for ESP32-C3"
 requires-python = ">=3.11,<3.14"
-dependencies = ["PySide6-Essentials>=6.8,<7", "pyserial==3.5", "pynput>=1.7.7,<2"]
+dependencies = ["PySide6-Essentials>=6.8,<7", "pyserial==3.5", "pynput>=1.7.7,<2", "bleak==3.0.2"]
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "pyinstaller>=6,<7", "ruff>=0.11,<1"]

@@ -142,7 +142,7 @@ def test_small_window_scrolls_instead_of_overlapping_rows(window, app) -> None:
     assert buttons["a"].geometry().bottom() < buttons["tab"].geometry().top()
     assert window.editor_scroll.verticalScrollBar().maximum() > 0
     assert window.editor_scroll.horizontalScrollBar().maximum() == 0
-    for control in (window.preview, window.save_button, window.sync_button, window.arm):
+    for control in (window.preview, window.save_button, window.arm):
         position = control.mapTo(window.centralWidget(), control.rect().topLeft())
         assert position.y() >= window.editor_scroll.geometry().bottom()
         assert window.centralWidget().rect().contains(position)
@@ -177,24 +177,24 @@ def test_secondary_controls_are_in_options_menu(window) -> None:
     assert "Hiện nhật ký" in labels
     assert "Ẩn xuống khay" in labels
     assert not window.refresh.isHidden()
-    assert not window.sync_button.isHidden()
     assert window.log.isHidden()
     window.log_toggle.setChecked(True)
     assert not window.log.isHidden()
 
 
-def test_save_and_sync_are_separate_primary_actions(window) -> None:
-    """Saving locally and syncing to the board have distinct buttons."""
+def test_save_copies_profile_to_connected_board_only(window) -> None:
+    """One Save button keeps the board current, so it works without the app."""
     with patch.object(window, "_save", return_value=True) as save:
         window.save_button.click()
     save.assert_called_once_with()
-    with patch.object(window, "_sync_profile", return_value=True) as sync:
-        window.sync_button.click()
-    sync.assert_not_called()
-    window.sync_button.setEnabled(True)
-    with patch.object(window, "_sync_profile", return_value=True) as sync:
-        window.sync_button.click()
-    sync.assert_called_once_with()
+    with patch.object(window, "_push_profile") as push:
+        assert window._save()
+    push.assert_not_called()
+    window._ready = True
+    window._connection = Mock(connected=True)
+    with patch.object(window, "_push_profile") as push:
+        assert window._save()
+    push.assert_called_once_with()
 
 
 def test_value_less_action_does_not_save_stale_shortcut(window) -> None:
@@ -364,7 +364,7 @@ def test_sync_encodes_all_actions_and_commits(window) -> None:
     expected = [
         "SYNC 1 0 -",
         "SYNC 2 1 4374726C2B53686966742B53",
-        "SYNC 3 2 58696E206368C3A06F",
+        "SYNC 3 2 -",
         "SYNC 4 4 -",
         "SYNC_COMMIT",
     ]
@@ -376,7 +376,7 @@ def test_sync_rejects_value_larger_than_firmware_capacity(window) -> None:
     window._ready = True
     window._connection = Mock(connected=True)
     card = window.cards[0]
-    card.kind.setCurrentIndex(card.kind.findData("text"))
+    card.kind.setCurrentIndex(card.kind.findData("sequence"))
     card.value.setPlainText("é" * 513)
 
     with patch.object(window, "_error") as error:

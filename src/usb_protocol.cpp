@@ -30,7 +30,21 @@ bool UsbProtocol::update(UsbCommand& command) {
     }
 
     if (Serial.available() <= 0) return false;
-    const char input = static_cast<char>(Serial.read());
+    return feed(static_cast<uint8_t>(Serial.read()), command);
+}
+
+void UsbProtocol::resetInput(bool discard) {
+    lineLength_ = 0;
+    discard_ = discard;
+}
+
+bool UsbProtocol::feed(uint8_t byte, UsbCommand& command) {
+    command = UsbCommand{};
+    const char input = static_cast<char>(byte);
+    if (discard_) {
+        if (input == '\n') resetInput();
+        return false;
+    }
     if (input == '?') {
         command.type = UsbCommandType::Status;
         return true;
@@ -40,7 +54,7 @@ bool UsbProtocol::update(UsbCommand& command) {
         if (lineLength_ + 1 < sizeof(line_)) {
             line_[lineLength_++] = input;
         } else {
-            lineLength_ = 0;
+            resetInput(true);
         }
         return false;
     }
@@ -85,6 +99,24 @@ void UsbProtocol::printMessage(const char* message) const {
 bool UsbProtocol::parseLine(UsbCommand& command) {
     char* verb = strtok(line_, " \t");
     if (verb == nullptr) return false;
+    if (equals(verb, "MODE")) {
+        const char* mode = strtok(nullptr, " \t");
+        if (!mode || strtok(nullptr, " \t") != nullptr) return false;
+        if (!equals(mode, "APP") && !equals(mode, "HID")) return false;
+        command.type = UsbCommandType::SetMode;
+        command.standalone = equals(mode, "HID");
+        return true;
+    }
+    if (equals(verb, "APP")) {
+        const char* value = strtok(nullptr, " \t");
+        if (value == nullptr) {
+            command.type = UsbCommandType::AppLease;
+            return true;
+        }
+        if (!equals(value, "OFF") || strtok(nullptr, " \t") != nullptr) return false;
+        command.type = UsbCommandType::AppRelease;
+        return true;
+    }
     if (equals(verb, "SYNC_COMMIT")) {
         command.type = UsbCommandType::SyncCommit;
         return true;

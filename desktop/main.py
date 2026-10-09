@@ -45,7 +45,7 @@ def main() -> int:
             logger = logging.getLogger("macropad")
             logger.setLevel(logging.INFO)
             logger.addHandler(handler)
-            logger.info("Starting Macropad Configurator v0.9")
+            logger.info("Starting timewo-macropad v0.10")
         except OSError as exc:
             QMessageBox.warning(None, "Không ghi được log", str(exc))
     try:

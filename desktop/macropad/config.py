@@ -35,12 +35,9 @@ FIRMWARE_KIND_IDS = {
 FIRMWARE_DIRECT_KINDS = {
     "none",
     "hotkey",
-    "text",
     "sequence",
     "lock_screen",
     "close_app",
-    "app",
-    "url",
 }
 ALIASES = {
     "control": "ctrl",

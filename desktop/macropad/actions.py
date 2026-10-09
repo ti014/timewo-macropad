@@ -1,4 +1,4 @@
-"""Execute explicit user mappings without a shell or clipboard manipulation."""
+"""Execute explicit mappings; paste Unicode text without IME key composition."""
 
 import ctypes
 import subprocess
@@ -78,7 +78,11 @@ class Executor:
                 return
             self._press_chord(keys)
         elif action.kind == "text":
-            self._keyboard.type(action.value)
+            app = QGuiApplication.instance()
+            if app is None:
+                raise OSError("Dán văn bản cần ứng dụng Macropad đang chạy.")
+            app.clipboard().setText(action.value)
+            self._press_chord(["ctrl", "v"])
         elif action.kind == "app":
             path = Path(action.value)
             if not path.is_file():

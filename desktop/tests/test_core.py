@@ -72,9 +72,9 @@ def test_key_sequence_uses_comma_between_steps() -> None:
         Action("hotkey", "1+Enter").validate()
 
 
-def test_launch_actions_are_supported_by_ble_firmware() -> None:
-    """App and URL actions are translated through Windows Run over BLE."""
-    assert {"app", "url"} <= FIRMWARE_DIRECT_KINDS
+def test_launch_and_text_actions_require_companion_app() -> None:
+    """Standalone HID never types paths or Unicode through the active IME."""
+    assert not {"app", "url", "text"} & FIRMWARE_DIRECT_KINDS
 
 
 def test_decoder_chunks_release_and_duplicates() -> None:

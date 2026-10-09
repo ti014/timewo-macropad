@@ -10,5 +10,9 @@ constexpr uint32_t kDebounceMs = 30;
 constexpr uint32_t kSerialBaud = 115200;
 constexpr uint8_t kBleToggleButton = 4;
 constexpr uint32_t kBleToggleHoldMs = 2500;
+// The app renews its lease every second; after this long the board types by itself.
+constexpr uint32_t kAppLeaseMs = 3000;
+// Hold this button while powering on to forget every Bluetooth pairing.
+constexpr uint8_t kBleForgetButton = 1;
 constexpr size_t kActionValueCapacity = 513;
 }  // namespace config
