@@ -5,7 +5,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QStandardPaths, QTimer
+from PySide6.QtCore import QLockFile, QStandardPaths, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from macropad.ui import MainWindow
@@ -21,6 +21,8 @@ def main() -> int:
     app.setApplicationName("MacropadConfigurator")
     app.setOrganizationName("Macropad")
     app.setStyle("Fusion")
+    # The stylesheet is light-only; Windows dark mode would otherwise darken dialogs and indicators.
+    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     smoke = "--smoke-test" in sys.argv
     if smoke:
         from esptool.loader import StubFlasher

@@ -73,7 +73,7 @@ ACTION_GROUPS = (
 )
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 9pt; color: #171717; }
-QMainWindow, QWidget#root, QScrollArea { background: #f6edda; }
+QMainWindow, QDialog, QWidget#root, QScrollArea { background: #f6edda; }
 QScrollArea { border: none; }
 QGroupBox { background: #fffdf5; border: 2px solid #171717; border-radius: 10px;
             margin-top: 8px; padding: 6px 4px 4px; font-weight: 800; }
@@ -99,7 +99,14 @@ QComboBox QAbstractItemView { background: #ffffff; color: #171717; border: 2px s
                               selection-background-color: #65cfff; selection-color: #171717; }
 QLabel#muted { color: #5f584c; }
 QLabel#title { color: #171717; font-size: 15pt; font-weight: 800; }
-QCheckBox { spacing: 8px; font-weight: 600; }
+QCheckBox, QRadioButton { spacing: 8px; font-weight: 600; }
+QCheckBox::indicator, QRadioButton::indicator { width: 14px; height: 14px; border: 2px solid #171717; background: #ffffff; }
+QCheckBox::indicator { border-radius: 4px; } QRadioButton::indicator { border-radius: 9px; }
+QCheckBox::indicator:checked { background: #7bdc55; } QRadioButton::indicator:checked { background: #2563eb; }
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled { border-color: #777064; background: #e5dcc9; }
+QComboBox:disabled { color: #777064; background: #efe6d3; }
+QProgressBar { background: #ffffff; border: 2px solid #171717; border-radius: 8px; text-align: center; }
+QProgressBar::chunk { background: #7bdc55; border-radius: 6px; }
 QMenu { background: #fffdf5; color: #171717; border: 2px solid #171717; }
 QMenu::item:selected { background: #65cfff; }
 QToolTip { background: #171717; color: #fffdf5; border: 1px solid #171717; }

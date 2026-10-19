@@ -4,6 +4,15 @@ Firmware và ứng dụng cấu hình/nạp firmware cho bàn phím macro BLE d�
 Một firmware chung cho nhiều board; tên Bluetooth, số nút, GPIO và thời gian nút
 là cấu hình lưu trên board, đổi trong app mà không cần build hay nạp lại.
 
+**Tải về:** [bản mới nhất cho Windows](https://github.com/ti014/timewo-macropad/releases/latest).
+Tải file `.zip`, giải nén rồi chạy EXE, không cần cài Python.
+
+![Cửa sổ chính: gán phím cho 3 nút của Ti Clicker](docs/images/main-window.png)
+
+| Đổi tên, GPIO, thời gian nút | Nạp firmware và kiểm tra |
+|---|---|
+| ![Hộp thoại Thiết bị](docs/images/device-dialog.png) | ![Hộp thoại nạp firmware](docs/images/flash-dialog.png) |
+
 ## Thành phần
 
 - `src/`, `include/`: firmware PlatformIO (Arduino) cho ESP32-C3, ESP32-S3, ESP32.
