@@ -4,6 +4,13 @@ Firmware và ứng dụng cấu hình/nạp firmware cho bàn phím macro BLE d�
 Một firmware chung cho nhiều board; tên Bluetooth, số nút, GPIO và thời gian nút
 là cấu hình lưu trên board, đổi trong app mà không cần build hay nạp lại.
 
+<p align="center">
+  <img src="docs/images/ti-clicker.jpg" alt="Ti Clicker: ESP32-C3 Super Mini, 3 phím cơ trong vỏ in 3D" width="420">
+</p>
+
+Ti Clicker, sản phẩm hoàn thiện: ESP32-C3 Super Mini trong vỏ in 3D, 3 phím cơ
+(PgUp, PgDn và một phím tùy chọn), dùng làm remote trình chiếu qua Bluetooth.
+
 **Tải về:** [bản mới nhất cho Windows](https://github.com/ti014/timewo-macropad/releases/latest).
 Tải file `.zip`, giải nén rồi chạy EXE, không cần cài Python.
 
