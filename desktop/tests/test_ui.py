@@ -10,6 +10,7 @@ from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from macropad.config import Action, load_config
+from macropad.protocol import PINS
 from macropad.ui import MainWindow, MarkedCheckBox
 
 
@@ -29,7 +30,7 @@ def window(app, tmp_path: Path):
     """Create an isolated editor without opening serial ports."""
     view = MainWindow(tmp_path / "profiles.json", testing=True)
     view._executor = Mock()
-    view._connection = Mock(connected=False)
+    view._connection = Mock(connected=False, pins=dict(PINS), request=Mock(side_effect=OSError("old firmware")))
     view._connection.poll.return_value = []
     with patch("macropad.ui.identify_usb_device", return_value=(0x303A, 0x1001, "test-board")):
         yield view
@@ -191,7 +192,7 @@ def test_save_copies_profile_to_connected_board_only(window) -> None:
         assert window._save()
     push.assert_not_called()
     window._ready = True
-    window._connection = Mock(connected=True)
+    window._connection = Mock(connected=True, pins=dict(PINS), request=Mock(side_effect=OSError("old firmware")))
     with patch.object(window, "_push_profile") as push:
         assert window._save()
     push.assert_called_once_with()
@@ -260,13 +261,14 @@ def test_action_dropdown_has_only_grouped_core_actions(window) -> None:
         "Không gán",
         "Phím tắt",
         "Chuỗi phím",
+        "Khóa màn hình",
+        "Đóng ứng dụng đang dùng",
+        "",
         "Văn bản",
         "Mở ứng dụng",
         "Mở website",
-        "",
-        "Khóa màn hình",
+        "Chạy script",
         "Chụp màn hình vào clipboard",
-        "Đóng ứng dụng đang dùng",
     ]
     assert "Xóa (Delete)" not in labels
     assert "Chụp màn hình (Print Screen)" not in labels
@@ -300,7 +302,7 @@ def test_sequence_value_is_entered_directly(window) -> None:
 
 
 def test_browse_is_only_available_for_apps(window) -> None:
-    """The file picker belongs only to the app action."""
+    """The file picker belongs only to the app and script actions."""
     card = window.cards[0]
     for kind in ("none", "hotkey", "sequence", "text", "url"):
         card.kind.setCurrentIndex(card.kind.findData(kind))
@@ -308,6 +310,11 @@ def test_browse_is_only_available_for_apps(window) -> None:
     card.kind.setCurrentIndex(card.kind.findData("app"))
     assert not card.browse.isHidden()
     assert card.browse.isEnabled()
+    assert card.where.text() == "Máy tính"
+    card.kind.setCurrentIndex(card.kind.findData("script"))
+    assert not card.browse.isHidden()
+    card.kind.setCurrentIndex(card.kind.findData("hotkey"))
+    assert card.where.text() == "Board"
 
 
 @pytest.mark.parametrize(
@@ -350,7 +357,7 @@ def test_switching_action_kind_preserves_value(window) -> None:
 def test_sync_encodes_all_actions_and_commits(window) -> None:
     """Sync sends one bounded hex payload per button and commits only at the end."""
     window._ready = True
-    window._connection = Mock(connected=True)
+    window._connection = Mock(connected=True, pins=dict(PINS), request=Mock(side_effect=OSError("old firmware")))
     assignments = [
         Action("none", ""),
         Action("hotkey", "Ctrl+Shift+S"),
@@ -371,10 +378,24 @@ def test_sync_encodes_all_actions_and_commits(window) -> None:
     assert [call.args[0] for call in window._connection.send_command.call_args_list] == expected
 
 
+def test_three_button_board_hides_fourth_row_and_syncs_three(window) -> None:
+    """A Ti Clicker board (GPIO 7/8/9) gets three rows and three SYNC commands."""
+    window._ready = True
+    window._connection = Mock(connected=True, pins={1: 7, 2: 8, 3: 9})
+    window._apply_layout(window._connection.pins)
+
+    assert [card.isVisibleTo(window) for card in window.cards] == [True, True, True, False]
+    assert window.cards[2].title.toolTip() == "BTN3 / GPIO9"
+    assert window._sync_profile()
+    sent = [call.args[0] for call in window._connection.send_command.call_args_list]
+    assert [line.split()[1] for line in sent[:-1]] == ["1", "2", "3"]
+    assert sent[-1] == "SYNC_COMMIT"
+
+
 def test_sync_rejects_value_larger_than_firmware_capacity(window) -> None:
     """A profile that the board cannot store is not committed."""
     window._ready = True
-    window._connection = Mock(connected=True)
+    window._connection = Mock(connected=True, pins=dict(PINS), request=Mock(side_effect=OSError("old firmware")))
     card = window.cards[0]
     card.kind.setCurrentIndex(card.kind.findData("sequence"))
     card.value.setPlainText("é" * 513)
@@ -719,3 +740,101 @@ def test_no_resume_until_firmware_answers(window) -> None:
     window._connection.confirmed = True
     window._settled()
     assert window.arm.isChecked()
+
+
+def test_device_settings_saved_only_when_board_echo_matches(window) -> None:
+    """Rename and rewire via CFG; success needs the echoed CONFIG to match."""
+    from test_device_firmware import INFO
+
+    from macropad.device import DeviceConfig, parse_info
+
+    window._ready = True
+    window._connection = Mock(connected=True, pins={1: 7, 2: 8, 3: 9})
+    window._device_info = parse_info(INFO)
+    wanted = DeviceConfig("Remote Phuong", (7, 8, 10), 30, 2500)
+    echo = "CONFIG " + wanted.command().split(maxsplit=1)[1]
+    window._connection.request.return_value = [echo, "CFG OK RESTART"]
+    dialog = Mock()
+    dialog.exec.return_value = 1
+    dialog.config.return_value = wanted
+    with patch("macropad.ui.DeviceDialog", return_value=dialog), patch.object(
+        window, "_error"
+    ) as error, patch("macropad.ui.QTimer.singleShot") as later:
+        window._edit_device()
+        error.assert_not_called()
+        assert window._connection.request.call_args.args[0] == wanted.command()
+        # Success drops the session so the restarted board is re-read from scratch.
+        assert not window._ready and later.called
+        window._ready = True
+        window._connection = Mock(connected=True, pins={1: 7, 2: 8, 3: 9})
+
+        window._connection.request.return_value = [
+            "CONFIG 546920436C69636B6572 7,8,9 30 2500",
+            "CFG OK RESTART",
+        ]
+        window._edit_device()
+        assert "khác" in error.call_args.args[0]
+
+        window._connection.request.return_value = ["CFG ERROR pin"]
+        window._edit_device()
+        assert "từ chối" in error.call_args.args[0]
+
+
+def test_push_profile_verifies_board_copy(window) -> None:
+    """With 0.11 firmware the profile is read back; a mismatch is reported."""
+    from test_device_firmware import INFO
+
+    from macropad.device import parse_info
+
+    window._ready = True
+    window._device_info = parse_info(INFO)
+    window._connection = Mock(connected=True, pins=dict(PINS))
+    window._button_count = 1
+    window.cards[0].set_assignment(Action("hotkey", "Ctrl+C"))
+    window._save(push=False)
+    window._connection.request.return_value = ["ACT 1 1 4374726C2B43", "DUMP END"]
+    assert window._push_profile()
+    window._connection.request.return_value = ["ACT 1 1 -", "DUMP END"]
+    with patch.object(window, "_error") as error:
+        assert not window._push_profile(report=window._error)
+    assert "không khớp" in error.call_args.args[0]
+
+
+def test_device_dialog_limits_rows_and_validates(window) -> None:
+    """One GPIO picker per button; invalid input keeps the dialog open."""
+    from test_device_firmware import INFO
+
+    from macropad.device import parse_info
+    from macropad.device_ui import DeviceDialog
+
+    dialog = DeviceDialog(parse_info(INFO), window)
+    assert dialog.config().pins == (7, 8, 9)
+    dialog.count.setValue(2)
+    assert dialog.config().pins == (7, 8)
+    dialog.pins[1].setCurrentIndex(dialog.pins[1].findData(7))
+    dialog.accept()
+    assert "khác nhau" in dialog.error.text()
+    assert dialog.result() == 0
+
+
+def test_flash_dialog_filters_packages_by_detected_chip(window, tmp_path: Path) -> None:
+    """After detection only firmware for that chip is offered; S2 gets an explanation."""
+    from test_device_firmware import make_package
+
+    from macropad.flash_ui import FlashDialog
+
+    make_package(tmp_path / "ti-clicker")
+    make_package(tmp_path / "s3", chip="esp32s3")
+    with patch("macropad.flash_ui.default_firmware_dir", return_value=tmp_path), patch(
+        "macropad.flash_ui.available_ports", return_value=[("COM9", "USB JTAG", True)]
+    ):
+        dialog = FlashDialog(Mock(), window, port="COM9")
+    assert dialog.package.count() == 2
+    dialog._target = None
+    dialog._output = "Detecting chip type... ESP32-C3\n"
+    dialog._detected(0)
+    assert dialog.package.count() == 1 and dialog.package.currentData().chip == "esp32c3"
+    dialog._output = "Detecting chip type... ESP32-S2\n"
+    dialog._detected(0)
+    assert dialog.package.count() == 0 and "không có Bluetooth" in dialog.chip_label.text()
+    assert not dialog.flash.isEnabled()

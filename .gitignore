@@ -17,3 +17,21 @@ desktop/*.spec
 desktop/.test-*/
 desktop/.test-artifacts/
 .test-tmp/
+/dist/
+
+# Local tooling and caches
+.claude/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# Secrets and machine-local settings
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.local.*

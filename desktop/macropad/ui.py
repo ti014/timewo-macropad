@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -45,12 +46,15 @@ from .config import (
     load_config,
     save_config,
 )
+from .device import DeviceConfig, DeviceInfo, parse_actions, parse_info
+from .device_ui import DeviceDialog
+from .flash_ui import FlashDialog
 from .hotkeys import is_modifier_key, shortcut_from_event
 from .transport import Connection, UsbIdentity, available_ports, find_usb_port, identify_usb_device
 
 HINTS = {
     "lock_screen": "Khóa Windows bằng API hệ thống. Dùng mục này thay cho Win+L.",
-    "sequence": "Nh\u1eadp c\u00e1c b\u01b0\u1edbc theo th\u1ee9 t\u1ef1, ng\u0103n c\u00e1ch b\u1eb1ng d\u1ea5u ph\u00edy. V\u00ed d\u1ee5: 1,Enter ho\u1eb7c Ctrl+C,Enter",
+    "sequence": "Nh\u1eadp c\u00e1c b\u01b0\u1edbc, ng\u0103n c\u00e1ch b\u1eb1ng d\u1ea5u ph\u1ea9y; wait:300 l\u00e0 ch\u1edd 300 ms. V\u00ed d\u1ee5: Ctrl+L,wait:300,Ctrl+C",
     "screenshot": "Ch\u1ee5p to\u00e0n m\u00e0n h\u00ecnh hi\u1ec7n t\u1ea1i v\u00e0o clipboard \u0111\u1ec3 d\u00e1n b\u1eb1ng Ctrl+V.",
     "close_app": "G\u1eedi Alt+F4 \u0111\u1ec3 \u0111\u00f3ng c\u1eeda s\u1ed5/\u1ee9ng d\u1ee5ng \u0111ang \u0111\u01b0\u1ee3c ch\u1ecdn.",
     "none": "Nút này sẽ không thực hiện hành động.",
@@ -58,10 +62,14 @@ HINTS = {
     "text": "Dán Unicode qua clipboard (tối đa 2000 ký tự), không qua bộ gõ. Thay nội dung clipboard; ứng dụng đích cần hỗ trợ Ctrl+V.",
     "app": "Chọn file .exe. Không nhập lệnh, tham số hoặc đường dẫn shortcut .lnk.",
     "url": "Ví dụ: https://github.com — mở bằng trình duyệt mặc định.",
+    "script": "Chọn file .py, .ps1, .bat hoặc .cmd. Chạy trên máy tính, cần app đang chạy nền.",
 }
+# Time for a board to restart after CFG before reconnecting to it.
+RESTART_SETTLE_MS = 2500
+# Grouped by who executes it: the board alone, or the app on this computer.
 ACTION_GROUPS = (
-    ("Cơ bản", ("none", "hotkey", "sequence", "text", "app", "url")),
-    ("Hệ thống", ("lock_screen", "screenshot", "close_app")),
+    ("Chạy trên board", ("none", "hotkey", "sequence", "lock_screen", "close_app")),
+    ("Cần app trên máy tính", ("text", "app", "url", "script", "screenshot")),
 )
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 9pt; color: #171717; }
@@ -414,6 +422,10 @@ class ButtonEditor(QFrame):
         ):
             widget.installEventFilter(self)
         layout.addWidget(self.kind)
+        self.where = QLabel()
+        self.where.setObjectName("muted")
+        self.where.setFixedWidth(56)
+        layout.addWidget(self.where)
         layout.addWidget(self.value, 1)
         tools = QWidget()
         tools.setFixedWidth(118)
@@ -446,7 +458,14 @@ class ButtonEditor(QFrame):
         if not isinstance(kind, str):
             return
         self.hint.setText(HINTS[kind])
-        editable = kind in {"hotkey", "sequence", "text", "app", "url"}
+        on_board = kind in FIRMWARE_DIRECT_KINDS
+        self.where.setText("Board" if on_board else "Máy tính")
+        self.where.setToolTip(
+            "Board tự chạy, kể cả khi đóng app hoặc ghép với máy khác."
+            if on_board
+            else "Chỉ chạy khi app này đang mở trên máy tính."
+        )
+        editable = kind in {"hotkey", "sequence", "text", "app", "url", "script"}
         self.value.setVisible(editable)
         self.summary.setVisible(not editable)
         self.summary.setText(
@@ -463,8 +482,9 @@ class ButtonEditor(QFrame):
         self.value.setEnabled(editable)
         self.record.setVisible(kind == "hotkey")
         self.record.setEnabled(kind == "hotkey" and not self._recording)
-        self.browse.setVisible(kind == "app")
-        self.browse.setEnabled(kind == "app")
+        self.browse.setVisible(kind in {"app", "script"})
+        self.browse.setEnabled(kind in {"app", "script"})
+        self.browse.setText("Chọn script…" if kind == "script" else "Chọn file .exe…")
 
     def _start_recording(self) -> None:
         """Temporarily capture one shortcut into the value editor."""
@@ -502,7 +522,12 @@ class ButtonEditor(QFrame):
 
     def _browse(self) -> None:
         """Select an executable without launching it."""
-        path, _ = QFileDialog.getOpenFileName(self, "Chọn ứng dụng", "", "Ứng dụng (*.exe)")
+        if self.kind.currentData() == "script":
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Chọn script", "", "Script (*.py *.pyw *.ps1 *.bat *.cmd)"
+            )
+        else:
+            path, _ = QFileDialog.getOpenFileName(self, "Chọn ứng dụng", "", "Ứng dụng (*.exe)")
         if path:
             self.value.setPlainText(path)
 
@@ -564,7 +589,8 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         self._waiting_for_board = False
         self._resume_macro = False
         self._retry_error: str | None = None
-        self.setWindowTitle("timewo-macropad — USB/BLE v0.10")
+        self._device_info: DeviceInfo | None = None
+        self.setWindowTitle("timewo-macropad — USB/BLE v0.11")
         self.setWindowIcon(app_icon())
         available = self.screen().availableGeometry()
         self.setMinimumSize(min(760, available.width() - 32), min(440, available.height() - 64))
@@ -619,6 +645,8 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         self.options.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         options_menu = QMenu(self.options)
         options_menu.addAction("Nhân bản profile", self._new_profile)
+        options_menu.addAction("Thiết bị (tên, GPIO, thời gian)…", self._edit_device)
+        options_menu.addAction("Thiết lập board mới / Nạp firmware…", self._open_flasher)
         options_menu.addSeparator()
         self.log_toggle = options_menu.addAction("Hiện nhật ký")
         self.log_toggle.setCheckable(True)
@@ -640,6 +668,8 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         layout.addWidget(self.editor_scroll, 1)
 
         assignment_group = QGroupBox("Gán chức năng cho 4 nút")
+        self.assignment_group = assignment_group
+        self._button_count = 4
         table = QVBoxLayout(assignment_group)
         table.setContentsMargins(6, 4, 6, 6)
         table.setSpacing(5)
@@ -859,13 +889,108 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             return False
         return self._save(push=False) and self._push_profile(report=self._error)
 
+    def _apply_layout(self, pins: dict[int, int]) -> None:
+        """Show one row per button the connected board reports, with its GPIO."""
+        self._button_count = len(pins)
+        self.assignment_group.setTitle(f"Gán chức năng cho {len(pins)} nút")
+        for number, card in enumerate(self.cards, start=1):
+            card.setVisible(number in pins)
+            if number in pins:
+                card.title.setToolTip(f"BTN{number} / GPIO{pins[number]}")
+        if not self.active_card.isVisibleTo(self):
+            self._select_card(self.cards[0])
+
+    def _verify_actions(self, actions: list[Action]) -> None:
+        """Read the board's stored actions back and compare them with what was sent.
+
+        Raises:
+            ValueError: If the board holds something else.
+            OSError: If the board does not answer.
+        """
+        stored = parse_actions(self._connection.request("DUMP", "DUMP END", timeout=3.0))
+        for index, action in enumerate(actions, start=1):
+            direct = action.kind in FIRMWARE_DIRECT_KINDS
+            expected = (FIRMWARE_KIND_IDS[action.kind], action.value if direct else "")
+            if stored.get(index) != expected:
+                raise ValueError(f"BTN{index} trên board không khớp sau khi lưu; hãy lưu lại.")
+
+    def _load_device_info(self) -> None:
+        """Ask firmware 0.11+ who it is; older firmware simply has no answer."""
+        try:
+            info = parse_info(self._connection.request("INFO", "INFO END", timeout=1.0))
+        except (OSError, ValueError):
+            self._device_info = None
+            self._log(
+                "Firmware trên board chưa hỗ trợ đổi tên/GPIO và xác nhận lưu. "
+                "Dùng Tùy chọn → Nạp firmware để cập nhật."
+            )
+            return
+        self._device_info = info
+        self._log(f"Board: {info.title}.")
+
+    def _edit_device(self) -> None:
+        """Change name, wiring and timing on the board, confirmed by its own echo."""
+        if not (self._ready and self._connection.connected):
+            self._error("Kết nối board qua USB để đổi tên, GPIO hoặc thời gian nút.")
+            return
+        if self._device_info is None:
+            self._error("Firmware trên board quá cũ. Dùng Tùy chọn → Nạp firmware để cập nhật.")
+            return
+        dialog = DeviceDialog(self._device_info, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        wanted = dialog.config()
+        self._pause_macro()
+        try:
+            replies = self._connection.request(wanted.command(), "CFG ", timeout=3.0)
+            if replies[-1].startswith("CFG ERROR"):
+                raise ValueError(f"Board từ chối cấu hình ({replies[-1].split()[-1]}).")
+            echoed = [DeviceConfig.parse(line) for line in replies if line.startswith("CONFIG ")]
+            if echoed[-1:] != [wanted]:
+                raise ValueError("Board lưu cấu hình khác với dữ liệu đã gửi.")
+        except (OSError, ValueError) as exc:
+            self._error(f"Không lưu được cấu hình thiết bị: {exc}")
+            return
+        self._log(
+            f"Đã lưu và xác nhận: {wanted.name}, GPIO {','.join(map(str, wanted.pins))}. "
+            "Board đang khởi động lại; app sẽ tự kết nối lại."
+        )
+        if wanted.name != self._device_info.config.name:
+            self._log("Tên mới: máy đã ghép đôi có thể cần xóa ghép đôi cũ rồi ghép lại.")
+        # The COM port may survive the restart (USB-UART bridges), so reconnect on purpose:
+        # that reruns the layout, INFO and profile push for the new wiring.
+        if self._reconnect_target is not None:
+            self._disconnect(recover=True)
+            self.reconnect_timer.stop()
+            QTimer.singleShot(RESTART_SETTLE_MS, self.reconnect_timer.start)
+        else:
+            self._disconnect()
+            QTimer.singleShot(RESTART_SETTLE_MS, self._toggle_connection)
+
+    def _open_flasher(self) -> None:
+        """Flash or update a board, then reconnect to it when it answers."""
+        current = self.ports.currentData()
+
+        def release(port: str) -> None:
+            if self._connection.connected or self._waiting_for_board:
+                self._disconnect()
+
+        dialog = FlashDialog(release, self, port=current)
+        dialog.exec()
+        if dialog.flashed_port:
+            self._refresh_ports()
+            if self.ports.findData(dialog.flashed_port) >= 0:
+                self.ports.setCurrentIndex(self.ports.findData(dialog.flashed_port))
+                self._toggle_connection()
+
     def _push_profile(self, report=None) -> bool:
         """Copy the saved active profile to the board; unchanged entries cost no flash."""
         report = report or self._log
         unsupported = []
         commands = []
         try:
-            for index, action in enumerate(self._config.profiles[self._config.active], start=1):
+            actions = self._config.profiles[self._config.active][: self._button_count]
+            for index, action in enumerate(actions, start=1):
                 # The board never runs these kinds, so it needs no copy of their value.
                 direct = action.kind in FIRMWARE_DIRECT_KINDS
                 encoded = (action.value.encode("utf-8").hex().upper() if direct else "") or "-"
@@ -875,15 +1000,23 @@ class MainWindow(BridgeUiMixin, QMainWindow):
                 if not direct:
                     unsupported.append(f"BTN{index} ({KINDS[action.kind]})")
             commands.append("SYNC_COMMIT")
+            verified = False
             if self._ready and self._connection.connected:
                 for command in commands:
                     self._connection.send_command(command)
+                if self._device_info is not None:
+                    self._verify_actions(actions)
+                    verified = True
             else:
                 self._ble.send_commands(commands)
         except (OSError, ValueError) as exc:
             report(f"Không đồng bộ được profile lên board: {exc}")
             return False
-        message = f"Board đã có profile '{self._config.active}'; tắt app board vẫn tự chạy phím tắt."
+        # Over BLE there is no reply channel, so the board's copy is only "sent".
+        state = "đã lưu và đọc lại khớp" if verified else "đã gửi"
+        message = (
+            f"Profile '{self._config.active}' {state} trên board; tắt app board vẫn tự chạy phím tắt."
+        )
         if unsupported:
             message += " Cần app mở: " + ", ".join(unsupported) + "."
         self._log(message)
@@ -1023,6 +1156,8 @@ class MainWindow(BridgeUiMixin, QMainWindow):
                 self._log(f"Mất USB khi đồng bộ: {exc}.")
                 return
             self._ready = True
+            self._apply_layout(self._connection.pins)
+            self._load_device_info()
             self._check_bridge_identity()
             self._update_save_label()
             self.arm.setEnabled(True)

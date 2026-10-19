@@ -40,9 +40,9 @@ void status() {
 void handleButton(const ButtonEvent& event) {
     const bool local = profile.standalone() || !appPresent();
     // An app must not also execute a press the board types itself.
-    if (!local) usb.printButton(event, buttons.pressCount(event.number));
+    if (!local) usb.printButton(event, buttons.pin(event.number), buttons.pressCount(event.number));
     if (event.type == ButtonEventType::LongPressed &&
-        event.number == config::kBleToggleButton) {
+        event.number == buttons.count()) {
         profile.setBleEnabled(!profile.bleEnabled());
         ble.setEnabled(profile.bleEnabled());
         status();
@@ -92,6 +92,28 @@ void handleUsbCommand(const UsbCommand& command) {
         case UsbCommandType::AppRelease:
             appLeased = false;
             break;
+        case UsbCommandType::Info:
+            usb.printInfo(profile.device());
+            break;
+        case UsbCommandType::Dump:
+            usb.printActions(profile);
+            break;
+        case UsbCommandType::SetConfig: {
+            const char* error = profile.saveDevice(command.device);
+            if (error != nullptr) {
+                if (usb.connected()) Serial.printf("CFG ERROR %s\n", error);
+                break;
+            }
+            // Echo what NVS now holds; the app only reports success when it matches.
+            usb.printConfig(profile.device());
+            usb.printMessage("CFG OK RESTART");
+            Serial.flush();
+            ble.bridge().releaseAll();
+            // Pins and the BLE name are only applied at boot.
+            delay(300);
+            ESP.restart();
+            break;
+        }
         case UsbCommandType::None:
             break;
     }
@@ -100,10 +122,11 @@ void handleUsbCommand(const UsbCommand& command) {
 
 void setup() {
     Serial.begin(config::kSerialBaud);
-    buttons.begin();
     profile.begin();
+    buttons.begin(profile.device());
     bootSession = esp_random();
-    ble.begin(profile.bleEnabled(), buttons.pressed(config::kBleForgetButton));
+    ble.begin(profile.device().name, profile.bleEnabled(),
+              buttons.pressed(config::kBleForgetButton));
     status();
 }
 

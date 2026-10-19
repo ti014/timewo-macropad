@@ -1,10 +1,16 @@
-"""Bounded, incremental decoder for the already-flashed four-button firmware."""
+"""Bounded, incremental decoder for macropad firmware with 1 to 4 buttons."""
 
 import re
 
 from .bridge_protocol import ButtonPress
 
 LINE = re.compile(r"BTN([1-4]) GPIO([0-9]+) (PRESSED|RELEASED) count=([0-9]{1,10})")
+# Firmware 0.10 printed "ESP32-C3 macropad"; 0.11+ prints "ESP32 macropad" on every chip.
+HEADER = re.compile(r"ESP32(?:-C3)? macropad: ([1-4])-button test ready\.")
+# Lines that answer INFO / DUMP / CFG / SYNC; kept for Connection.request().
+REPLY_VERBS = {"DEVICE", "CAPS", "LIMITS", "PINS_OK", "CONFIG", "INFO", "ACT", "DUMP", "CFG", "SYNC"}
+MAX_REPLIES = 64
+# Wiring of the original 4-button pad, used until the board reports its own.
 PINS = {1: 3, 2: 4, 3: 5, 4: 6}
 
 
@@ -22,6 +28,8 @@ class Decoder:
         self.ble_address: str | None = None
         self.ble_enabled: bool | None = None
         self.standalone = False
+        self.pins = dict(PINS)
+        self.replies: list[str] = []
 
     def feed(self, data: bytes) -> list[int]:
         """Return only new physical button presses.
@@ -43,7 +51,8 @@ class Decoder:
                 self._discard = False
             elif not self._discard:
                 self._buffer.append(byte)
-                if len(self._buffer) > 512:
+                # An ACT reply carries up to 512 value bytes as hex.
+                if len(self._buffer) > 1200:
                     self._buffer.clear()
                     self._discard = True
         return events
@@ -51,6 +60,10 @@ class Decoder:
     def _line(self, line: str) -> int | None:
         """Distinguish events from firmware's four-line status report."""
         fields = line.split()
+        if fields and fields[0] in REPLY_VERBS:
+            self.replies.append(line)
+            del self.replies[:-MAX_REPLIES]
+            return None
         if fields[:2] == ["BLE", "OFF"]:
             self.ble_enabled = False
             return None
@@ -75,8 +88,10 @@ class Decoder:
             except ValueError:
                 return None
             return event if event.session == self.bridge_session else None
-        if line == "ESP32-C3 macropad: 4-button test ready.":
-            self._snapshot = set(PINS)
+        header = HEADER.fullmatch(line)
+        if header:
+            self._snapshot = set(range(1, int(header.group(1)) + 1))
+            self.pins = {}
             self._last.clear()
             return None
         match = LINE.fullmatch(line)
@@ -84,13 +99,16 @@ class Decoder:
             return None
         button, pin, state, count = match.groups()
         button, pin, count = int(button), int(pin), int(count)
-        if PINS[button] != pin or count > 0xFFFFFFFF:
+        if count > 0xFFFFFFFF:
             return None
         if button in self._snapshot:
             self._snapshot.remove(button)
+            self.pins[button] = pin
             self._last[button] = count
             if not self._snapshot:
                 self.status_count += 1
+            return None
+        if self.pins.get(button) != pin:
             return None
         previous = self._last.get(button)
         self._last[button] = count

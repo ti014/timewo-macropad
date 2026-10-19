@@ -34,10 +34,10 @@ uint8_t functionKey(const char* name) {
 }
 }  // namespace
 
-void BleController::begin(bool enabled, bool forgetBonds) {
+void BleController::begin(const char* name, bool enabled, bool forgetBonds) {
     enabled_ = enabled;
     keyboard_.setDelay(kInterKeyDelayMs);
-    keyboard_.start(enabled, forgetBonds);
+    keyboard_.start(name, enabled, forgetBonds);
 }
 
 void BleController::setEnabled(bool enabled) {
@@ -72,6 +72,7 @@ bool BleController::execute(const MacroAction& action) {
             return executeHotkey("Print_Screen");
         case ActionKind::App:
         case ActionKind::Url:
+        case ActionKind::Script:
             return false;  // Launch through the app bridge; do not type into Win+R.
         default:
             // Unknown host-specific actions are intentionally ignored over BLE.
@@ -91,11 +92,23 @@ bool BleController::executeSequence(const char* value) {
     strncpy(copy, value, sizeof(copy) - 1);
     copy[sizeof(copy) - 1] = '\0';
     char* cursor = copy;
+    unsigned long waited = 0;
     while (cursor != nullptr && *cursor != '\0') {
         char* next = strchr(cursor, ',');
         if (next != nullptr) *next++ = '\0';
         trim(cursor);
-        if (!executeChord(cursor)) return false;
+        if (strncasecmp(cursor, "wait:", 5) == 0) {
+            char* end = nullptr;
+            const unsigned long ms = strtoul(cursor + 5, &end, 10);
+            // The total is capped: waiting blocks button scanning and USB replies.
+            if (end == cursor + 5 || *end != '\0' || ms > config::kMaxWaitMs - waited) {
+                return false;
+            }
+            waited += ms;
+            delay(ms);
+        } else if (!executeChord(cursor)) {
+            return false;
+        }
         cursor = next;
         if (cursor != nullptr) delay(kInterKeyDelayMs);
     }

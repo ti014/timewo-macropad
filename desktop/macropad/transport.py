@@ -1,6 +1,6 @@
 """Nonblocking USB serial session; never selects Bluetooth ports automatically."""
 
-from time import monotonic
+from time import monotonic, sleep
 
 import serial
 from serial.tools import list_ports
@@ -8,6 +8,10 @@ from serial.tools import list_ports
 from .protocol import Decoder
 
 UsbIdentity = tuple[int, int, str]
+# Espressif native USB, plus the USB-UART bridges used on most ESP32 dev boards
+# (Silicon Labs CP210x, WCH CH340/CH9102, FTDI).
+ESPRESSIF_VID = 0x303A
+BOARD_VIDS = {ESPRESSIF_VID, 0x10C4, 0x1A86, 0x0403}
 # Firmware drops the lease after 3 s; renew well inside that window.
 LEASE_INTERVAL = 1.0
 
@@ -22,6 +26,7 @@ class Connection:
         self._pending_since: float | None = None
         self._last_status = 0.0
         self._next_lease = 0.0
+        self._held: list[int] = []
 
     @property
     def connected(self) -> bool:
@@ -45,8 +50,9 @@ class Connection:
         try:
             connection.open()
             connection.reset_input_buffer()
-            # Assert DTR for the firmware's Serial-connected check, not RTS/reset.
-            connection.dtr = True
+            # Native USB firmware needs DTR for its Serial-connected check. On USB-UART
+            # boards DTR drives IO0 through the auto-reset circuit, so leave it low there.
+            connection.dtr = not _is_uart_bridge(port)
         except (OSError, serial.SerialException):
             connection.close()
             raise
@@ -55,6 +61,7 @@ class Connection:
         self._pending_since = None
         self._last_status = 0.0
         self._next_lease = 0.0
+        self._held = []
 
     @property
     def confirmed(self) -> bool:
@@ -75,6 +82,11 @@ class Connection:
     def ble_address(self) -> str | None:
         """Bluetooth address reported by the selected USB board."""
         return self._decoder.ble_address
+
+    @property
+    def pins(self) -> dict[int, int]:
+        """Button number to GPIO, as reported by the board's last status snapshot."""
+        return self._decoder.pins
 
     @property
     def standalone(self) -> bool:
@@ -134,9 +146,40 @@ class Connection:
         """
         if self._serial is None:
             return []
-        events = self._decode(self._serial.read(min(self._serial.in_waiting, 4096)))
+        events, self._held = self._held, []
+        events += self._decode(self._serial.read(min(self._serial.in_waiting, 4096)))
         self._renew_lease()
         return events
+
+    def request(self, command: str, end: str, timeout: float = 2.0) -> list[str]:
+        """Send a command and wait for its reply lines, keeping presses for the next poll.
+
+        Args:
+            command: Firmware command such as ``INFO``.
+            end: Prefix of the reply line that completes the answer, e.g. ``INFO END``.
+            timeout: Seconds to wait before giving up.
+
+        Returns:
+            Reply lines received after sending, up to and including the end line.
+
+        Raises:
+            serial.SerialException: On timeout or when the board is disconnected.
+        """
+        if self._serial is None:
+            raise serial.SerialException("Board chưa kết nối.")
+        self._held += self._decode(self._serial.read(self._serial.in_waiting))
+        self._decoder.replies.clear()
+        self.send_command(command)
+        deadline = monotonic() + timeout
+        while True:
+            replies = self._decoder.replies
+            for index, line in enumerate(replies):
+                if line.startswith(end):
+                    return replies[: index + 1]
+            if monotonic() > deadline:
+                raise serial.SerialException(f"Board không trả lời lệnh {command.split()[0]}.")
+            sleep(0.01)
+            self._held += self._decode(self._serial.read(self._serial.in_waiting))
 
     def _renew_lease(self) -> None:
         """Tell bridge firmware the app executes presses, so it must not type them too."""
@@ -175,18 +218,31 @@ class Connection:
             connection.close()
 
 
+def _is_uart_bridge(port: str) -> bool:
+    """Whether ``port`` is a known USB-UART bridge rather than Espressif native USB."""
+    return any(
+        device.device == port and device.vid in BOARD_VIDS - {ESPRESSIF_VID}
+        for device in list_ports.comports()
+    )
+
+
 def available_ports() -> list[tuple[str, str, bool]]:
-    """List devices with Espressif USB ports first.
+    """List likely ESP32 boards first: Espressif USB, then common USB-UART bridges.
 
     Returns:
-        Tuples of port name, friendly description and Espressif USB detection.
+        Tuples of port name, friendly description and likely-board detection.
     """
-    ports = [(port.device, port.description, port.vid == 0x303A) for port in list_ports.comports()]
+    ports = [
+        (port.device, port.description, port.vid in BOARD_VIDS) for port in list_ports.comports()
+    ]
     return sorted(ports, key=lambda item: (not item[2], item[0]))
 
 
 def identify_usb_device(port: str) -> UsbIdentity | None:
-    """Remember the physical Espressif device, not its changeable COM number.
+    """Remember the physical board, not its changeable COM number.
+
+    Bridges without a USB serial number (most CH340) cannot be told apart, so they
+    get no identity and reconnect manually.
 
     Args:
         port: Explicitly selected serial port.
@@ -197,7 +253,7 @@ def identify_usb_device(port: str) -> UsbIdentity | None:
     for device in list_ports.comports():
         if (
             device.device == port
-            and device.vid == 0x303A
+            and device.vid in BOARD_VIDS
             and device.pid is not None
             and device.serial_number
         ):

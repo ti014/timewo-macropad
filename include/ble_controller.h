@@ -8,7 +8,7 @@
 
 class BleController {
 public:
-    void begin(bool enabled, bool forgetBonds = false);
+    void begin(const char* name, bool enabled, bool forgetBonds = false);
     bool enabled() const;
     bool connected();
     bool execute(const MacroAction& action);

@@ -25,6 +25,62 @@ void ProfileStore::begin() {
         }
     }
     memcpy(staged_, actions_, sizeof(actions_));
+    loadDevice();
+}
+
+void ProfileStore::loadDevice() {
+    DeviceSettings defaults;
+    strncpy(defaults.name, config::kDefaultName, config::kMaxNameLength);
+    defaults.buttonCount = sizeof(config::kDefaultPins);
+    memcpy(defaults.pins, config::kDefaultPins, sizeof(config::kDefaultPins));
+
+    DeviceSettings stored = defaults;
+    const String name = preferences_.getString("name", defaults.name);
+    strncpy(stored.name, name.c_str(), config::kMaxNameLength);
+    stored.name[config::kMaxNameLength] = '\0';
+    if (preferences_.isKey("pins")) {
+        stored.buttonCount = static_cast<uint8_t>(
+            preferences_.getBytes("pins", stored.pins, sizeof(stored.pins)));
+    }
+    stored.debounceMs = preferences_.getUShort("debounce", defaults.debounceMs);
+    stored.holdMs = preferences_.getUShort("hold", defaults.holdMs);
+    // Corrupt or out-of-range NVS must never leave the board without working buttons.
+    device_ = validateDevice(stored) == nullptr ? stored : defaults;
+}
+
+const char* ProfileStore::validateDevice(const DeviceSettings& settings) {
+    const size_t nameLength = strnlen(settings.name, sizeof(settings.name));
+    if (nameLength == 0 || nameLength > config::kMaxNameLength) return "name";
+    for (size_t i = 0; i < nameLength; ++i) {
+        const uint8_t c = static_cast<uint8_t>(settings.name[i]);
+        if (c < 0x20 || c == 0x7F) return "name";
+    }
+    if (settings.buttonCount < 1 || settings.buttonCount > config::kMaxButtons) return "count";
+    for (uint8_t i = 0; i < settings.buttonCount; ++i) {
+        if (!config::pinUsable(settings.pins[i])) return "pin";
+        for (uint8_t j = 0; j < i; ++j) {
+            if (settings.pins[i] == settings.pins[j]) return "duplicate";
+        }
+    }
+    if (settings.debounceMs < config::kMinDebounceMs ||
+        settings.debounceMs > config::kMaxDebounceMs) {
+        return "debounce";
+    }
+    if (settings.holdMs < config::kMinHoldMs || settings.holdMs > config::kMaxHoldMs) return "hold";
+    return nullptr;
+}
+
+const char* ProfileStore::saveDevice(const DeviceSettings& settings) {
+    const char* error = validateDevice(settings);
+    if (error != nullptr) return error;
+    if (preferences_.putString("name", settings.name) == 0 ||
+        preferences_.putBytes("pins", settings.pins, settings.buttonCount) != settings.buttonCount ||
+        preferences_.putUShort("debounce", settings.debounceMs) == 0 ||
+        preferences_.putUShort("hold", settings.holdMs) == 0) {
+        return "storage";
+    }
+    loadDevice();
+    return nullptr;
 }
 
 const MacroAction& ProfileStore::action(uint8_t number) const {
@@ -74,10 +130,10 @@ void ProfileStore::setStandalone(bool enabled) {
 }
 
 void ProfileStore::setDefaults() {
-    copyAction(actions_[0], ActionKind::Hotkey, "Ctrl+C");
-    copyAction(actions_[1], ActionKind::Hotkey, "Ctrl+V");
-    copyAction(actions_[2], ActionKind::Hotkey, "Alt+Tab");
-    copyAction(actions_[3], ActionKind::Hotkey, "Ctrl+S");
+    static const char* const defaults[] = {"Ctrl+C", "Ctrl+V", "Alt+Tab", "Ctrl+S"};
+    for (uint8_t i = 0; i < kButtonCount; ++i) {
+        copyAction(actions_[i], ActionKind::Hotkey, defaults[i]);
+    }
     memcpy(staged_, actions_, sizeof(actions_));
 }
 
@@ -101,6 +157,7 @@ bool ProfileStore::validAction(ActionKind kind, const char* value) const {
         case ActionKind::CloseApp:
         case ActionKind::App:
         case ActionKind::Url:
+        case ActionKind::Script:
             return true;
     }
     return false;

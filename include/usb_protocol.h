@@ -15,6 +15,9 @@ enum class UsbCommandType : uint8_t {
     SetMode,
     AppLease,    // The app is running and will execute presses; renew every second.
     AppRelease,  // The app is closing; the board types locally right away.
+    Info,        // Report chip, firmware, capabilities, limits and device settings.
+    Dump,        // Report every stored action so the app can verify a save.
+    SetConfig,   // Store name/wiring/timing, report it back, then restart.
 };
 
 struct UsbCommand {
@@ -24,6 +27,7 @@ struct UsbCommand {
     bool bleEnabled = false;
     bool standalone = false;
     char value[config::kActionValueCapacity] = {};
+    DeviceSettings device{};
 };
 
 class UsbProtocol {
@@ -33,8 +37,11 @@ public:
     void resetInput(bool discard = false);
     bool connected() const;
     void printStatus(const ButtonScanner& buttons, const ProfileStore& profile, bool bleConnected) const;
-    void printButton(const ButtonEvent& event, uint32_t pressCount) const;
+    void printButton(const ButtonEvent& event, uint8_t pin, uint32_t pressCount) const;
     void printMessage(const char* message) const;
+    void printInfo(const DeviceSettings& settings) const;
+    void printConfig(const DeviceSettings& settings) const;
+    void printActions(const ProfileStore& profile) const;
 
 private:
     static constexpr size_t kLineCapacity = 2304;
@@ -44,6 +51,7 @@ private:
     bool discard_ = false;
 
     bool parseLine(UsbCommand& command);
+    static void printHex(const char* text);
     static int hexValue(char value);
     static bool decodeHex(const char* source, char* destination, size_t capacity);
 };

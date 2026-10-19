@@ -29,8 +29,11 @@ bool UsbProtocol::update(UsbCommand& command) {
         return false;
     }
 
-    if (Serial.available() <= 0) return false;
-    return feed(static_cast<uint8_t>(Serial.read()), command);
+    // Drain what has arrived instead of one byte per loop: a hex SYNC line can be 1 KB.
+    while (Serial.available() > 0) {
+        if (feed(static_cast<uint8_t>(Serial.read()), command)) return true;
+    }
+    return false;
 }
 
 void UsbProtocol::resetInput(bool discard) {
@@ -72,24 +75,80 @@ bool UsbProtocol::connected() const {
 void UsbProtocol::printStatus(const ButtonScanner& buttons, const ProfileStore& profile,
                               bool bleConnected) const {
     if (!connected()) return;
-    Serial.println("ESP32-C3 macropad: 4-button test ready.");
+    Serial.printf("ESP32 macropad: %u-button test ready.\n", static_cast<unsigned>(buttons.count()));
     Serial.printf("BLE %s%s\n", profile.bleEnabled() ? "ON" : "OFF",
                   bleConnected ? " CONNECTED" : "");
     Serial.println("Send '?' to show current state and press counts.");
-    for (uint8_t number = 1; number <= ProfileStore::kButtonCount; ++number) {
+    for (uint8_t number = 1; number <= buttons.count(); ++number) {
         Serial.printf("BTN%u GPIO%u %s count=%lu\n", static_cast<unsigned>(number),
-                      static_cast<unsigned>(config::kButtonPins[number - 1]),
+                      static_cast<unsigned>(buttons.pin(number)),
                       buttons.pressed(number) ? "PRESSED" : "RELEASED",
                       static_cast<unsigned long>(buttons.pressCount(number)));
     }
 }
 
-void UsbProtocol::printButton(const ButtonEvent& event, uint32_t pressCount) const {
+void UsbProtocol::printButton(const ButtonEvent& event, uint8_t pin, uint32_t pressCount) const {
     if (!connected()) return;
     const char* state = event.type == ButtonEventType::Pressed ? "PRESSED" : "RELEASED";
     Serial.printf("BTN%u GPIO%u %s count=%lu\n", static_cast<unsigned>(event.number),
-                  static_cast<unsigned>(config::kButtonPins[event.number - 1]), state,
-                  static_cast<unsigned long>(pressCount));
+                  static_cast<unsigned>(pin), state, static_cast<unsigned long>(pressCount));
+}
+
+void UsbProtocol::printHex(const char* text) {
+    if (*text == '\0') {
+        Serial.print('-');
+        return;
+    }
+    for (; *text != '\0'; ++text) Serial.printf("%02X", static_cast<uint8_t>(*text));
+}
+
+void UsbProtocol::printConfig(const DeviceSettings& settings) const {
+    if (!connected()) return;
+    Serial.print("CONFIG ");
+    printHex(settings.name);
+    Serial.print(' ');
+    for (uint8_t i = 0; i < settings.buttonCount; ++i) {
+        Serial.printf(i == 0 ? "%u" : ",%u", static_cast<unsigned>(settings.pins[i]));
+    }
+    Serial.printf(" %u %u\n", static_cast<unsigned>(settings.debounceMs),
+                  static_cast<unsigned>(settings.holdMs));
+}
+
+void UsbProtocol::printInfo(const DeviceSettings& settings) const {
+    if (!connected()) return;
+    Serial.printf("DEVICE 1 %s %s %s\n", CONFIG_IDF_TARGET, config::kFirmwareVersion,
+                  config::kBoardId);
+    // What this firmware can do on its own; the app hides the rest for this board.
+    Serial.println("CAPS ble_hid hotkey sequence wait media lock_screen close_app");
+    Serial.printf("LIMITS %u %u %u %u %u %u %u\n", static_cast<unsigned>(config::kMaxButtons),
+                  static_cast<unsigned>(config::kActionValueCapacity - 1),
+                  static_cast<unsigned>(config::kMaxNameLength),
+                  static_cast<unsigned>(config::kMinDebounceMs),
+                  static_cast<unsigned>(config::kMaxDebounceMs),
+                  static_cast<unsigned>(config::kMinHoldMs),
+                  static_cast<unsigned>(config::kMaxHoldMs));
+    Serial.print("PINS_OK");
+    char separator = ' ';
+    for (uint8_t pin = 0; pin < 64; ++pin) {
+        if (!config::pinUsable(pin)) continue;
+        Serial.printf("%c%u", separator, static_cast<unsigned>(pin));
+        separator = ',';
+    }
+    Serial.println();
+    printConfig(settings);
+    Serial.println("INFO END");
+}
+
+void UsbProtocol::printActions(const ProfileStore& profile) const {
+    if (!connected()) return;
+    for (uint8_t number = 1; number <= ProfileStore::kButtonCount; ++number) {
+        const MacroAction& action = profile.action(number);
+        Serial.printf("ACT %u %u ", static_cast<unsigned>(number),
+                      static_cast<unsigned>(action.kind));
+        printHex(action.value);
+        Serial.println();
+    }
+    Serial.println("DUMP END");
 }
 
 void UsbProtocol::printMessage(const char* message) const {
@@ -117,8 +176,42 @@ bool UsbProtocol::parseLine(UsbCommand& command) {
         command.type = UsbCommandType::AppRelease;
         return true;
     }
-    if (equals(verb, "SYNC_COMMIT")) {
-        command.type = UsbCommandType::SyncCommit;
+    if (equals(verb, "SYNC_COMMIT") || equals(verb, "INFO") || equals(verb, "DUMP")) {
+        if (strtok(nullptr, " \t") != nullptr) return false;
+        command.type = equals(verb, "INFO")   ? UsbCommandType::Info
+                       : equals(verb, "DUMP") ? UsbCommandType::Dump
+                                              : UsbCommandType::SyncCommit;
+        return true;
+    }
+    if (equals(verb, "CFG")) {
+        // CFG <name hex> <pin,pin,...> <debounce ms> <hold ms>
+        char* name = strtok(nullptr, " \t");
+        char* pins = strtok(nullptr, " \t");
+        char* debounceText = strtok(nullptr, " \t");
+        char* holdText = strtok(nullptr, " \t");
+        uint32_t debounce = 0;
+        uint32_t hold = 0;
+        DeviceSettings& device = command.device;
+        if (name == nullptr || pins == nullptr || strtok(nullptr, " \t") != nullptr ||
+            !decodeHex(name, device.name, sizeof(device.name)) ||
+            !parseUnsigned(debounceText, debounce) || !parseUnsigned(holdText, hold) ||
+            debounce > 0xFFFF || hold > 0xFFFF) {
+            return false;
+        }
+        for (char* cursor = pins; *cursor != '\0';) {
+            char* end = nullptr;
+            const unsigned long pin = strtoul(cursor, &end, 10);
+            if (end == cursor || pin > 255 || device.buttonCount >= config::kMaxButtons) {
+                return false;
+            }
+            device.pins[device.buttonCount++] = static_cast<uint8_t>(pin);
+            if (*end == ',') ++end;
+            else if (*end != '\0') return false;
+            cursor = end;
+        }
+        device.debounceMs = static_cast<uint16_t>(debounce);
+        device.holdMs = static_cast<uint16_t>(hold);
+        command.type = UsbCommandType::SetConfig;
         return true;
     }
     if (equals(verb, "BLE")) {
@@ -137,7 +230,7 @@ bool UsbProtocol::parseLine(UsbCommand& command) {
     uint32_t button = 0;
     uint32_t kind = 0;
     if (!parseUnsigned(buttonText, button) || !parseUnsigned(kindText, kind) ||
-        button < 1 || button > ProfileStore::kButtonCount || kind > 8 || encoded == nullptr ||
+        button < 1 || button > ProfileStore::kButtonCount || kind > 9 || encoded == nullptr ||
         !(equals(encoded, "-") || decodeHex(encoded, command.value, sizeof(command.value)))) {
         return false;
     }

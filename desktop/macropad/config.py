@@ -20,7 +20,12 @@ KINDS = {
     "text": "Văn bản",
     "app": "Mở ứng dụng",
     "url": "Mở website",
+    "script": "Chạy script",
 }
+# Files a "script" action may run, with the interpreter the computer uses for each.
+SCRIPT_SUFFIXES = {".py", ".pyw", ".ps1", ".bat", ".cmd"}
+# Longest total of all "wait:<ms>" steps; matches config::kMaxWaitMs in the firmware.
+MAX_WAIT_MS = 3000
 FIRMWARE_KIND_IDS = {
     "none": 0,
     "hotkey": 1,
@@ -31,6 +36,7 @@ FIRMWARE_KIND_IDS = {
     "close_app": 6,
     "app": 7,
     "url": 8,
+    "script": 9,
 }
 FIRMWARE_DIRECT_KINDS = {
     "none",
@@ -109,12 +115,29 @@ def parse_hotkey(value: str) -> list[str]:
     return [key for key in keys if key in modifiers] + [key for key in keys if key not in modifiers]
 
 
-def parse_sequence(value: str) -> list[list[str]]:
-    """Validate a sequence of chords, such as ``1,Enter`` or ``Ctrl+C,Enter``."""
+def parse_sequence(value: str) -> list[list[str] | int]:
+    """Validate a sequence such as ``1,Enter`` or ``Ctrl+L,wait:300,Ctrl+C``.
+
+    Returns:
+        One normalized chord per key step, or the delay in milliseconds for a wait step.
+    """
     parts = [part.strip() for part in value.split(",")]
     if not 1 <= len(parts) <= 32 or any(not part for part in parts):
         raise ValueError("A key sequence needs 1 to 32 steps separated by commas.")
-    return [parse_hotkey(part) for part in parts]
+    steps: list[list[str] | int] = []
+    for part in parts:
+        if part.lower().startswith("wait:"):
+            delay = part[5:]
+            if not delay.isdigit():
+                raise ValueError("Bước chờ phải có dạng wait:300 (mili giây).")
+            steps.append(int(delay))
+        else:
+            steps.append(parse_hotkey(part))
+    if sum(step for step in steps if isinstance(step, int)) > MAX_WAIT_MS:
+        raise ValueError(f"Tổng thời gian chờ trong một chuỗi tối đa {MAX_WAIT_MS} ms.")
+    if all(isinstance(step, int) for step in steps):
+        raise ValueError("Chuỗi phím cần ít nhất một phím, không chỉ có bước chờ.")
+    return steps
 
 
 @dataclass(frozen=True)
@@ -160,6 +183,12 @@ class Action:
             if not path.is_absolute() or path.suffix.lower() != ".exe":
                 raise ValueError(
                     "Hãy chọn đường dẫn đầy đủ tới file .exe; không nhập lệnh terminal."
+                )
+        elif self.kind == "script":
+            path = Path(self.value)
+            if not path.is_absolute() or path.suffix.lower() not in SCRIPT_SUFFIXES:
+                raise ValueError(
+                    "Hãy chọn đường dẫn đầy đủ tới file .py, .ps1, .bat hoặc .cmd."
                 )
 
 

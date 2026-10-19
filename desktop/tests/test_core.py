@@ -106,6 +106,19 @@ def test_status_snapshot_never_executes_macro() -> None:
     assert decoder.feed(b"BTN1 GPIO3 RELEASED count=8\nBTN1 GPIO3 PRESSED count=9\n") == [1]
 
 
+def test_decoder_learns_three_button_wiring() -> None:
+    """A 3-button board reports its own pins; the old 4-button GPIOs stop matching."""
+    decoder = Decoder()
+    decoder.feed(
+        b"ESP32-C3 macropad: 3-button test ready.\n"
+        b"BTN1 GPIO7 RELEASED count=0\nBTN2 GPIO8 RELEASED count=0\nBTN3 GPIO9 RELEASED count=0\n"
+    )
+    assert decoder.status_count == 1
+    assert decoder.pins == {1: 7, 2: 8, 3: 9}
+    assert decoder.feed(b"BTN3 GPIO9 PRESSED count=1\n") == [3]
+    assert decoder.feed(b"BTN1 GPIO3 PRESSED count=1\n") == []
+
+
 def test_decoder_bounded_buffer() -> None:
     """Discard overlong garbage without interpreting its suffix as a macro."""
     decoder = Decoder()

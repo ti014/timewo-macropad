@@ -1,7 +1,9 @@
 """Execute explicit mappings; paste Unicode text without IME key composition."""
 
 import ctypes
+import shutil
 import subprocess
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -68,8 +70,12 @@ class Executor:
             self._copy_screenshot()
             return
         if action.kind == "sequence":
-            for chord in parse_sequence(action.value):
-                self._press_chord(chord)
+            for step in parse_sequence(action.value):
+                if isinstance(step, int):
+                    # shortcut: blocks the GUI for the wait (max 3 s); move to a worker if longer.
+                    time.sleep(step / 1000)
+                else:
+                    self._press_chord(step)
             return
         if action.kind == "hotkey":
             keys = parse_hotkey(action.value)
@@ -88,6 +94,11 @@ class Executor:
             if not path.is_file():
                 raise FileNotFoundError(f"Application not found: {path}")
             subprocess.Popen([str(path)], shell=False, cwd=str(path.parent))
+        elif action.kind == "script":
+            path = Path(action.value)
+            if not path.is_file():
+                raise FileNotFoundError(f"Script not found: {path}")
+            subprocess.Popen(script_command(path), shell=False, cwd=str(path.parent))
         elif action.kind == "url" and not webbrowser.open(action.value):
             raise OSError("The default browser could not be opened.")
 
@@ -110,3 +121,22 @@ class Executor:
             if errors:
                 raise errors[0]
 
+
+
+def script_command(path: Path) -> list[str]:
+    """Build the interpreter command for one script file, never through a shell string.
+
+    Raises:
+        OSError: If the interpreter the file needs is not installed.
+    """
+    suffix = path.suffix.lower()
+    if suffix in {".bat", ".cmd"}:
+        return ["cmd.exe", "/c", str(path)]
+    if suffix == ".ps1":
+        return ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(path)]
+    # The packaged app has no Python of its own; use the one installed on this computer.
+    names = ("pyw", "pythonw", "py", "python") if suffix == ".pyw" else ("py", "python")
+    interpreter = next((found for name in names if (found := shutil.which(name))), None)
+    if interpreter is None:
+        raise OSError("Không tìm thấy Python trên máy để chạy script .py.")
+    return [interpreter, str(path)]

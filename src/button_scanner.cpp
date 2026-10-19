@@ -3,12 +3,6 @@
 #include "config.h"
 
 namespace {
-constexpr size_t kButtonCount = sizeof(config::kButtonPins) / sizeof(config::kButtonPins[0]);
-
-bool isToggleButton(uint8_t number) {
-    return number == config::kBleToggleButton;
-}
-
 void emit(ButtonEventHandler handler, uint8_t number, ButtonEventType type, uint32_t heldMs) {
     if (handler != nullptr) {
         ButtonEvent event;
@@ -20,11 +14,12 @@ void emit(ButtonEventHandler handler, uint8_t number, ButtonEventType type, uint
 }
 }  // namespace
 
-void ButtonScanner::begin() {
+void ButtonScanner::begin(const DeviceSettings& settings) {
+    settings_ = settings;
     const uint32_t now = millis();
-    for (size_t i = 0; i < kButtonCount; ++i) {
-        pinMode(config::kButtonPins[i], INPUT_PULLUP);
-        const bool pressed = digitalRead(config::kButtonPins[i]) == LOW;
+    for (size_t i = 0; i < settings_.buttonCount; ++i) {
+        pinMode(settings_.pins[i], INPUT_PULLUP);
+        const bool pressed = digitalRead(settings_.pins[i]) == LOW;
         states_[i].rawPressed = pressed;
         states_[i].stablePressed = pressed;
         states_[i].lastChangeMs = now;
@@ -36,19 +31,19 @@ void ButtonScanner::begin() {
 }
 
 void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
-    for (size_t i = 0; i < kButtonCount; ++i) {
+    for (size_t i = 0; i < settings_.buttonCount; ++i) {
         State& state = states_[i];
         const uint8_t number = static_cast<uint8_t>(i + 1);
-        const bool rawPressed = digitalRead(config::kButtonPins[i]) == LOW;
+        const bool rawPressed = digitalRead(settings_.pins[i]) == LOW;
 
         if (rawPressed != state.rawPressed) {
             state.rawPressed = rawPressed;
             state.lastChangeMs = now;
         }
         if (state.rawPressed == state.stablePressed ||
-            static_cast<uint32_t>(now - state.lastChangeMs) < config::kDebounceMs) {
+            static_cast<uint32_t>(now - state.lastChangeMs) < settings_.debounceMs) {
             if (state.stablePressed && isToggleButton(number) && !state.longReported &&
-                static_cast<uint32_t>(now - state.pressedAtMs) >= config::kBleToggleHoldMs) {
+                static_cast<uint32_t>(now - state.pressedAtMs) >= settings_.holdMs) {
                 state.longReported = true;
                 emit(handler, number, ButtonEventType::LongPressed,
                      static_cast<uint32_t>(now - state.pressedAtMs));
@@ -80,9 +75,13 @@ void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
 }
 
 uint32_t ButtonScanner::pressCount(uint8_t number) const {
-    return number >= 1 && number <= 4 ? states_[number - 1].pressCount : 0;
+    return number >= 1 && number <= settings_.buttonCount ? states_[number - 1].pressCount : 0;
 }
 
 bool ButtonScanner::pressed(uint8_t number) const {
-    return number >= 1 && number <= 4 && states_[number - 1].stablePressed;
+    return number >= 1 && number <= settings_.buttonCount && states_[number - 1].stablePressed;
+}
+
+uint8_t ButtonScanner::pin(uint8_t number) const {
+    return number >= 1 && number <= settings_.buttonCount ? settings_.pins[number - 1] : 0;
 }

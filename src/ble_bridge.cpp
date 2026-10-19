@@ -7,7 +7,6 @@
 #include <vector>
 
 namespace {
-constexpr char kName[] = "timewo-macropad";
 constexpr char kService[] = "a9141000-6ed1-4b32-9b4c-cb94de001001";
 constexpr char kEvents[] = "a9141001-6ed1-4b32-9b4c-cb94de001001";
 constexpr char kCommands[] = "a9141002-6ed1-4b32-9b4c-cb94de001001";
@@ -43,8 +42,10 @@ void securityParam(esp_ble_sm_param_t param, T value) {
 }
 }
 
-void BridgeKeyboard::start(bool enabled, bool forgetBonds) {
+void BridgeKeyboard::start(const char* name, bool enabled, bool forgetBonds) {
     enabled_ = enabled;
+    // The name is fixed once BLE starts; a new name takes effect after the next restart.
+    setName(name);
     BLEDevice::setCustomGapHandler(onGap);
     // Initialize once even when disabled so re-enabling never restarts the MCU.
     begin();
@@ -58,11 +59,11 @@ void BridgeKeyboard::start(bool enabled, bool forgetBonds) {
 
     // Hand-built payloads: the generated one put both UUIDs as 128-bit and
     // overflowed the 31-byte limit, so the stack silently dropped fields.
-    BLEAdvertisementData advert;  // 3 + 4 + 4 + 17 = 28 bytes
+    BLEAdvertisementData advert;  // 3 + 4 + 4 + (2 + name, at most 15) = 28 bytes
     advert.setFlags(ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
     advert.setAppearance(HID_KEYBOARD);
     advert.setCompleteServices(BLEUUID(static_cast<uint16_t>(0x1812)));
-    advert.setName(kName);
+    advert.setName(name);
     BLEAdvertisementData scanResponse;  // 18 bytes; the desktop app scans actively.
     scanResponse.setCompleteServices(BLEUUID(kService));
 

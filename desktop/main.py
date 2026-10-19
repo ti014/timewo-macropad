@@ -22,6 +22,11 @@ def main() -> int:
     app.setOrganizationName("Macropad")
     app.setStyle("Fusion")
     smoke = "--smoke-test" in sys.argv
+    if smoke:
+        from esptool.loader import StubFlasher
+
+        # A packaged build must carry esptool's flasher stubs or flashing fails on connect.
+        StubFlasher("ESP32-C3")
     settings_dir = Path(QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation))
     try:
         settings_dir.mkdir(parents=True, exist_ok=True)
@@ -45,7 +50,7 @@ def main() -> int:
             logger = logging.getLogger("macropad")
             logger.setLevel(logging.INFO)
             logger.addHandler(handler)
-            logger.info("Starting timewo-macropad v0.10")
+            logger.info("Starting timewo-macropad v0.11")
         except OSError as exc:
             QMessageBox.warning(None, "Không ghi được log", str(exc))
     try:
