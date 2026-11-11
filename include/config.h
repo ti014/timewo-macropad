@@ -38,6 +38,10 @@ constexpr uint32_t kSerialBaud = 115200;
 constexpr uint32_t kAppLeaseMs = 3000;
 // Hold this button while powering on to forget every Bluetooth pairing.
 constexpr uint8_t kBleForgetButton = 1;
+// Hold both for holdMs to pair a new host under a new Bluetooth address, so hosts
+// paired before see an unknown device and cannot grab the connection back.
+// Disabled on boards with fewer buttons than the higher number.
+constexpr uint8_t kPairButtons[2] = {6, 9};
 constexpr size_t kActionValueCapacity = 513;
 // Longest total of all "wait:<ms>" steps in one sequence.
 constexpr uint32_t kMaxWaitMs = 3000;

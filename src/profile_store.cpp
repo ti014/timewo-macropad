@@ -11,6 +11,7 @@ void ProfileStore::begin() {
     preferences_.begin(kNamespace, false);
     bleEnabled_ = preferences_.getBool(kBleKey, true);
     standalone_ = preferences_.getBool("standalone", false);
+    bleIdentity_ = preferences_.getUChar("bleid", 0);
 
     for (uint8_t i = 0; i < kButtonCount; ++i) {
         char kindKey[8];
@@ -127,6 +128,10 @@ void ProfileStore::setStandalone(bool enabled) {
     if (standalone_ == enabled) return;
     standalone_ = enabled;
     preferences_.putBool("standalone", enabled);
+}
+
+void ProfileStore::nextBleIdentity() {
+    preferences_.putUChar("bleid", ++bleIdentity_);
 }
 
 void ProfileStore::setDefaults() {

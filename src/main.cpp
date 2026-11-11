@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <BLEDevice.h>
+#include <esp_mac.h>
 
 #include "config.h"
 #include "profile_store.h"
@@ -37,7 +38,34 @@ void status() {
     usb.printStatus(buttons, profile, ble.connected());
 }
 
+// Must run before Bluetooth starts: the BLE address is derived from the base MAC.
+void applyBleIdentity(uint8_t identity) {
+    if (identity == 0) return;
+    uint8_t mac[6];
+    if (esp_efuse_mac_get_default(mac) != ESP_OK) return;
+    mac[0] |= 0x02;  // locally administered, so it never equals another chip's factory address
+    mac[5] = static_cast<uint8_t>(mac[5] + identity);
+    esp_base_mac_addr_set(mac);
+}
+
+// Hosts paired before keep the old address and stop finding the board; the next host
+// sees a brand-new device to pair, like the "pair new" key on multi-host keyboards.
+void pairNewHost() {
+    profile.setBleEnabled(true);
+    profile.nextBleIdentity();
+    ble.bridge().forgetBonds();
+    usb.printMessage("PAIR NEW RESTART");
+    Serial.flush();
+    ble.bridge().releaseAll();
+    delay(300);
+    ESP.restart();
+}
+
 void handleButton(const ButtonEvent& event) {
+    if (event.type == ButtonEventType::PairRequested) {
+        pairNewHost();
+        return;
+    }
     const bool local = profile.standalone() || !appPresent();
     // An app must not also execute a press the board types itself.
     if (!local) usb.printButton(event, buttons.pin(event.number), buttons.pressCount(event.number));
@@ -123,6 +151,7 @@ void handleUsbCommand(const UsbCommand& command) {
 void setup() {
     Serial.begin(config::kSerialBaud);
     profile.begin();
+    applyBleIdentity(profile.bleIdentity());
     buttons.begin(profile.device());
     bootSession = esp_random();
     ble.begin(profile.device().name, profile.bleEnabled(),

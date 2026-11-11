@@ -13,6 +13,7 @@ public:
     // forgetBonds clears every stored pairing so a host with a stale key can pair again.
     void start(const char* name, bool enabled, bool forgetBonds = false);
     void setEnabled(bool enabled);
+    void forgetBonds();
     void updateState(bool standalone, uint32_t session, uint32_t sequence);
     void notifyPress(uint8_t button, uint32_t session, uint32_t sequence);
     bool pollCommand(UsbCommand& command);

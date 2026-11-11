@@ -42,7 +42,7 @@ void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
         }
         if (state.rawPressed == state.stablePressed ||
             static_cast<uint32_t>(now - state.lastChangeMs) < settings_.debounceMs) {
-            if (state.stablePressed && isToggleButton(number) && !state.longReported &&
+            if (state.stablePressed && isToggleButton(number) && !state.longReported && !state.swallowed &&
                 static_cast<uint32_t>(now - state.pressedAtMs) >= settings_.holdMs) {
                 state.longReported = true;
                 emit(handler, number, ButtonEventType::LongPressed,
@@ -56,13 +56,18 @@ void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
             state.pressedAtMs = now;
             state.longReported = false;
             ++state.pressCount;
-            if (!isToggleButton(number)) {
+            // Second key of the pairing combo: neither key runs its action or toggles BLE.
+            const uint8_t partner = pairPartner(number);
+            state.swallowed = partner != 0 && states_[partner - 1].stablePressed;
+            if (state.swallowed) states_[partner - 1].swallowed = true;
+            if (!isToggleButton(number) && !state.swallowed) {
                 emit(handler, number, ButtonEventType::Pressed, 0);
             }
             continue;
         }
 
         const uint32_t heldMs = static_cast<uint32_t>(now - state.pressedAtMs);
+        if (state.swallowed) continue;
         if (isToggleButton(number)) {
             if (!state.longReported) {
                 emit(handler, number, ButtonEventType::Pressed, heldMs);
@@ -71,6 +76,33 @@ void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
         } else {
             emit(handler, number, ButtonEventType::Released, heldMs);
         }
+    }
+    checkPair(now, handler);
+}
+
+uint8_t ButtonScanner::pairPartner(uint8_t number) const {
+    const uint8_t first = config::kPairButtons[0], second = config::kPairButtons[1];
+    if (first == second || first > settings_.buttonCount || second > settings_.buttonCount) return 0;
+    if (number == first) return second;
+    if (number == second) return first;
+    return 0;
+}
+
+void ButtonScanner::checkPair(uint32_t now, ButtonEventHandler handler) {
+    const uint8_t first = config::kPairButtons[0];
+    const uint8_t second = pairPartner(first);
+    if (second == 0) return;
+    const State& a = states_[first - 1];
+    const State& b = states_[second - 1];
+    if (!a.stablePressed || !b.stablePressed) {
+        pairReported_ = false;
+        return;
+    }
+    // Both swallowed means one went down while the other was held, i.e. a real combo.
+    const uint32_t held = min(now - a.pressedAtMs, now - b.pressedAtMs);
+    if (!pairReported_ && a.swallowed && b.swallowed && held >= settings_.holdMs) {
+        pairReported_ = true;
+        emit(handler, second, ButtonEventType::PairRequested, held);
     }
 }
 
