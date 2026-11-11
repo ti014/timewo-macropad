@@ -7,89 +7,99 @@
 <meta name="description" content="Nạp firmware và cấu hình macropad ESP32 ngay trên trình duyệt qua USB, theo từng bước.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
 <style>
+/* Same palette and hard-shadow look as the Windows app (desktop/macropad/ui.py STYLE). */
 :root {
-  --bg: #f6f5f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a65; --line: #dedcd4;
-  --accent: #1f6feb; --accent-soft: #e6efff; --accent-text: #ffffff;
-  --ok: #1a7f37; --ok-soft: #e3f4e8; --err: #b3261e; --hit: #ffd84d;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
-    --accent: #4c8dff; --accent-soft: #1d2a44; --accent-text: #0d0d0c;
-    --ok: #4ac26b; --ok-soft: #1c3324; --err: #ff8a80; --hit: #b8961f;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
-  --accent: #4c8dff; --accent-soft: #1d2a44; --accent-text: #0d0d0c;
-  --ok: #4ac26b; --ok-soft: #1c3324; --err: #ff8a80; --hit: #b8961f;
+  color-scheme: light;
+  --bg: #f6edda; --card: #fffdf5; --text: #171717; --muted: #5f584c; --line: #171717;
+  --yellow: #ffd43b; --yellow-hover: #ffe274; --pink: #ff6b9a; --pink-hover: #ff8ab0;
+  --green: #7bdc55; --cyan: #65cfff; --blue: #2563eb; --err: #b3261e; --disabled: #e5dcc9;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
-h1 { font-size: 26px; margin: 0 0 4px; }
-h2 { font-size: 17px; margin: 0; }
+  font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+main { max-width: 820px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 26px; font-weight: 800; margin: 0 0 4px; }
+h2 { font-size: 16px; font-weight: 800; margin: 0; }
 p { margin: 8px 0; }
-code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; }
+code { background: #fff; border: 1.5px solid var(--line); border-radius: 5px; padding: 0 4px; font-size: 13px; }
 .muted { color: var(--muted); }
-.err { color: var(--err); }
-.ok { color: var(--ok); }
+.err { color: var(--err); font-weight: 600; }
+.ok { color: #23801a; font-weight: 600; }
 button, select, input { font: inherit; color: inherit; }
-button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
-  padding: 10px 18px; cursor: pointer; font-weight: 600; }
-button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
-button.link { background: none; color: var(--accent); padding: 0; font-weight: 500; text-decoration: underline; }
-button:disabled { opacity: .5; cursor: default; }
-select, input { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-width: 0; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+button { background: var(--yellow); color: var(--text); border: 2px solid var(--line); border-radius: 8px;
+  padding: 7px 14px; cursor: pointer; font-weight: 700; box-shadow: 3px 3px 0 var(--line);
+  transition: transform .05s, box-shadow .05s; }
+button:hover { background: var(--yellow-hover); }
+button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--line); }
+button.primary { background: var(--pink); }
+button.primary:hover { background: var(--pink-hover); }
+button.secondary { background: var(--card); }
+button.link { background: none; border: 0; box-shadow: none; padding: 0; color: var(--blue); font-weight: 600; text-decoration: underline; }
+button[aria-pressed="true"] { background: var(--cyan); }
+button:disabled { color: #777064; background: var(--disabled); border-color: #777064; box-shadow: none; cursor: default; transform: none; }
+select, input { background: #fff; border: 2px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+input:disabled, select:disabled { background: #efe6d3; color: #777064; border-color: #777064; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
 
 /* Progress bar of steps */
 .stepper { display: flex; gap: 4px; list-style: none; padding: 0; margin: 20px 0 8px; }
-.stepper li { flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
+.stepper li { flex: 1; text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); }
 .stepper li::before { content: attr(data-n); display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; margin: 0 auto 4px; border-radius: 50%; border: 2px solid var(--line);
-  background: var(--card); font-weight: 700; font-size: 13px; }
-.stepper li.done { color: var(--ok); }
-.stepper li.done::before { content: "\2713"; border-color: var(--ok); background: var(--ok); color: var(--card); }
-.stepper li.current { color: var(--accent); font-weight: 700; }
-.stepper li.current::before { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+  width: 30px; height: 30px; margin: 0 auto 4px; border-radius: 50%; border: 2px solid var(--line);
+  background: var(--card); color: var(--text); font-weight: 800; font-size: 13px; }
+.stepper li.done { color: var(--text); }
+.stepper li.done::before { content: "\2713"; background: var(--green); }
+.stepper li.current { color: var(--text); }
+.stepper li.current::before { background: var(--cyan); box-shadow: 2px 2px 0 var(--line); }
 
 /* One card per step; only the current one is open */
-.step { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; }
-.step header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-.step .num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
-  justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid var(--line); color: var(--muted); }
+.step { background: var(--card); border: 2px solid var(--line); border-radius: 10px; margin-top: 12px; }
+.step header { display: flex; align-items: center; gap: 10px; padding: 11px 16px; }
+.step .num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 800; border: 2px solid var(--line); background: var(--card); }
 .step .summary { margin-left: auto; font-size: 13px; color: var(--muted); text-align: right; }
-.step .body { display: none; padding: 0 16px 16px 50px; }
-.step.current { border: 2px solid var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
-.step.current .num { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.step .body { display: none; padding: 0 16px 16px 52px; }
+.step.current { border-color: var(--blue); box-shadow: 4px 4px 0 var(--line); }
+.step.current .num { background: var(--cyan); }
 .step.current .body { display: block; }
-.step.done .num { background: var(--ok); border-color: var(--ok); color: var(--card); }
+.step.done .num { background: var(--green); }
 .step.done .num::before { content: "\2713"; }
 .step.done .num span { display: none; }
 .step.done header { cursor: pointer; }
-.step.todo { opacity: .55; }
+.step.done header:hover h2 { text-decoration: underline; }
+.step.todo { opacity: .5; }
 .step.todo .summary { display: none; }
 
 .pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 10px; }
-.pins label, .field { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.pins label, .field { display: flex; flex-direction: column; gap: 3px; font-size: 13px; font-weight: 700; }
 .field { margin-top: 10px; max-width: 260px; }
 details { margin-top: 12px; }
-summary { cursor: pointer; color: var(--muted); }
-.notice { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-th { font-size: 13px; color: var(--muted); font-weight: 600; }
-td input, td select { width: 100%; }
+summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.notice { background: var(--card); border: 2px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+
+/* Step 4: one card per button, like the app's assignment rows */
+.rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.row { border: 2px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--card);
+  display: grid; grid-template-columns: 52px minmax(140px, 200px) 1fr auto; gap: 8px; align-items: center; }
+.row.active { border-color: var(--blue); box-shadow: 3px 3px 0 var(--line); }
+.row b { font-weight: 800; }
+.row .hint { grid-column: 2 / -1; font-size: 12.5px; color: var(--muted); }
+.row button { padding: 5px 10px; }
+.quick { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 12px; background: var(--card); }
+.quick[aria-disabled="true"] { opacity: .5; }
+.quick-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 8px; }
+.quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-top: 8px; }
+.quick-grid button { padding: 6px 4px; font-size: 13.5px; }
+.quick-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 10px; }
+
 .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 360px; margin-top: 12px; }
-.key { border: 2px solid var(--line); border-radius: 10px; padding: 14px 6px; text-align: center; font-weight: 700;
-  transition: background .1s, border-color .1s; }
-.key small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
-.key.pressed { border-color: var(--ok); background: var(--ok-soft); }
-.key.hit { background: var(--hit); }
+.key { border: 2px solid var(--line); border-radius: 10px; padding: 14px 6px; text-align: center; font-weight: 800;
+  background: var(--card); transition: background .1s; }
+.key small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+.key.pressed { background: var(--green); box-shadow: 3px 3px 0 var(--line); }
+.key.hit { background: var(--yellow); }
 #message { min-height: 1.5em; margin-top: 10px; }
-#log { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-top: 8px;
+#log { background: #fff; border: 2px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 8px;
   font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 200px; overflow: auto; white-space: pre-wrap; }
 [hidden] { display: none !important; }
 @media (max-width: 560px) {
@@ -97,6 +107,9 @@ td input, td select { width: 100%; }
   .stepper li.current { font-size: 12px; }
   .step .body { padding-left: 16px; }
   .step .summary { display: none; }
+  .row { grid-template-columns: 44px 1fr; }
+  .row input, .row .hint { grid-column: 1 / -1; }
+  .row button { grid-column: 1 / -1; }
 }
 </style>
 </head>
@@ -120,7 +133,7 @@ td input, td select { width: 100%; }
     <div class="body">
       <p>Cắm board vào máy tính bằng cáp USB <b>có truyền dữ liệu</b> (cáp chỉ sạc sẽ không thấy board). Đóng ứng dụng macropad trên Windows nếu đang mở.</p>
       <p>Bấm nút bên dưới, chọn board trong danh sách hiện ra (thường tên <i>USB JTAG/serial</i>, <i>CP210x</i> hoặc <i>CH340</i>), rồi bấm <b>Kết nối</b>.</p>
-      <div class="actions"><button id="connect">Kết nối board</button></div>
+      <div class="actions"><button id="connect" class="primary">Kết nối board</button></div>
       <details><summary>Không thấy board trong danh sách?</summary>
         <p>Thử cáp USB khác hoặc cổng USB khác. Với board mới tinh: giữ nút <b>BOOT</b> trên board, cắm USB, rồi thả nút và bấm lại Kết nối board.</p>
       </details>
@@ -138,7 +151,7 @@ td input, td select { width: 100%; }
       </ol>
       <div class="actions">
         <esp-web-install-button manifest="firmware/web-manifest.json">
-          <button slot="activate">Nạp firmware</button>
+          <button slot="activate" class="primary">Nạp firmware</button>
           <span slot="unsupported" class="err">Trình duyệt chưa hỗ trợ, hãy dùng Chrome hoặc Edge.</span>
           <span slot="not-allowed" class="err">Trang phải mở qua HTTPS.</span>
         </esp-web-install-button>
@@ -160,7 +173,7 @@ td input, td select { width: 100%; }
         <label class="field">Chống dội phím, debounce (ms)<input id="debounce" type="number"></label>
         <label class="field">Giữ nút cuối để bật/tắt Bluetooth (ms)<input id="hold" type="number" step="100"></label>
       </details>
-      <div class="actions"><button id="savePins">Lưu và tiếp tục</button></div>
+      <div class="actions"><button id="savePins" class="primary">Lưu và tiếp tục</button></div>
     </div>
   </section>
 
@@ -168,12 +181,16 @@ td input, td select { width: 100%; }
     <header><span class="num"><span>4</span></span><h2>Gán chức năng cho từng nút</h2><span class="summary"></span></header>
     <div class="body">
       <p>Chọn việc mỗi nút sẽ làm. Board tự gõ qua Bluetooth, không cần cài ứng dụng.</p>
-      <p class="muted">Phím tắt, ví dụ <code>Ctrl+C</code>, <code>Win+Shift+S</code>, <code>media_play_pause</code>. Chuỗi phím là nhiều phím cách nhau dấu phẩy, ví dụ <code>Ctrl+L,wait:300,Ctrl+C</code>.</p>
-      <table>
-        <thead><tr><th>Nút</th><th>Chức năng</th><th>Giá trị</th></tr></thead>
-        <tbody id="actionRows"></tbody>
-      </table>
-      <div class="actions"><button id="saveActions">Lưu và tiếp tục</button></div>
+      <p class="muted">Bấm vào một nút để chọn, rồi bấm <b>Bắt phím</b> và nhấn tổ hợp trên bàn phím, hoặc chọn ở <b>Phím nhanh</b> bên dưới.</p>
+      <div id="actionRows" class="rows"></div>
+      <div id="quick" class="quick">
+        <div class="quick-head"><b id="quickTitle">Phím nhanh</b><span class="muted" id="quickNote">Chọn phím bổ trợ, rồi chọn phím chính.</span></div>
+        <div class="quick-grid" id="quickMods"></div>
+        <div class="quick-grid" id="quickKeys"></div>
+        <div class="quick-label">Media</div>
+        <div class="quick-grid" id="quickMedia"></div>
+      </div>
+      <div class="actions"><button id="saveActions" class="primary">Lưu và tiếp tục</button></div>
     </div>
   </section>
 
@@ -184,7 +201,7 @@ td input, td select { width: 100%; }
       <p id="testProgress" class="muted"></p>
       <div id="keys" class="keys"></div>
       <p class="muted">Nút nào không sáng: bấm vào bước 3 phía trên để đổi chân GPIO của nút đó.</p>
-      <div class="actions"><button id="finish">Hoàn tất</button></div>
+      <div class="actions"><button id="finish" class="primary">Hoàn tất</button></div>
     </div>
   </section>
 
@@ -502,29 +519,168 @@ $("savePins").addEventListener("click", () => busy($("savePins"), async () => {
 }));
 
 // ---------- Step 4: actions ----------
+// Hints and quick keys mirror the Windows app (HINTS, QuickKeyBar in desktop/macropad/ui.py).
+const HINTS = {
+  0: "Nút này sẽ không làm gì.",
+  1: "Bấm Bắt phím rồi nhấn tổ hợp, hoặc chọn ở Phím nhanh. Ví dụ: Ctrl+Shift+S, Delete, Print_Screen.",
+  3: "Các bước cách nhau dấu phẩy; wait:300 là chờ 300 ms. Ví dụ: Ctrl+L,wait:300,Ctrl+C. Phím nhanh sẽ thêm vào cuối chuỗi.",
+  4: "Board gửi Win+L để khóa Windows.",
+  6: "Board gửi Alt+F4 để đóng cửa sổ đang chọn.",
+};
+const MODIFIERS = ["Ctrl", "Alt", "Shift", "Win"];
+const QUICK_KEYS = ["A", "C", "V", "X", "Z", "S", "L", "F4", "Tab", "Enter", "Backspace", "Delete", "Esc", "Space", "Print_Screen"];
+// Only the media names the firmware's BLE keyboard understands (ble_controller.cpp).
+const MEDIA_KEYS = [["media_play_pause", "Play/Pause"], ["media_volume_up", "Âm lượng +"],
+                    ["media_volume_down", "Âm lượng −"], ["media_volume_mute", "Tắt tiếng"]];
+let activeRow = null, capturing = null;
+
+function rowParts(row) {
+  return { select: row.querySelector("select"), input: row.querySelector("input"), capture: row.querySelector("button") };
+}
+
 function fillActions() {
   $("actionRows").replaceChildren();
+  activeRow = null;
   for (let n = 1; n <= info.pins.length; n++) {
     const [kind, value] = info.actions[n] || [0, ""];
-    const tr = document.createElement("tr");
+    const row = document.createElement("div");
+    row.className = "row";
+    const title = document.createElement("b");
+    title.textContent = `Nút ${n}`;
     const select = document.createElement("select");
+    select.setAttribute("aria-label", `Chức năng nút ${n}`);
     KINDS.forEach(([, id, label]) => select.add(new Option(label, id)));
     // Desktop-only kinds (text, app, url, ...) cannot run on the board; show them as unassigned.
     select.value = KINDS.some(([, id]) => id === kind) ? kind : 0;
     const input = document.createElement("input");
+    input.setAttribute("aria-label", `Giá trị nút ${n}`);
     input.value = NEEDS_VALUE.has(Number(select.value)) ? value : "";
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.textContent = "Bắt phím";
+    const hint = document.createElement("div");
+    hint.className = "hint";
     const sync = () => {
       const k = Number(select.value);
-      input.disabled = !NEEDS_VALUE.has(k);
+      input.disabled = capture.disabled = !NEEDS_VALUE.has(k);
       input.placeholder = k === 3 ? "Ctrl+L,wait:300,Ctrl+C" : k === 1 ? "Ctrl+C" : "";
+      hint.textContent = HINTS[k];
+      if (row === activeRow) updateQuick();
     };
     select.addEventListener("change", sync);
+    capture.addEventListener("click", () => startCapture(row));
+    row.addEventListener("focusin", () => selectRow(row));
+    row.addEventListener("click", () => selectRow(row));
+    row.append(title, select, input, capture, hint);
+    $("actionRows").append(row);
     sync();
-    tr.innerHTML = `<td>Nút ${n}</td>`;
-    [select, input].forEach((el) => { const td = document.createElement("td"); td.append(el); tr.append(td); });
-    $("actionRows").append(tr);
   }
+  selectRow($("actionRows").firstElementChild);
 }
+
+function selectRow(row) {
+  if (!row || row === activeRow) return;
+  activeRow?.classList.remove("active");
+  activeRow = row;
+  row.classList.add("active");
+  updateQuick();
+}
+
+function updateQuick() {
+  const n = [...$("actionRows").children].indexOf(activeRow) + 1;
+  const enabled = NEEDS_VALUE.has(Number(rowParts(activeRow).select.value));
+  $("quickTitle").textContent = `Phím nhanh — Nút ${n}`;
+  $("quickNote").textContent = enabled
+    ? "Chọn phím bổ trợ, rồi chọn phím chính."
+    : "Đổi chức năng của nút này sang Phím tắt hoặc Chuỗi phím để dùng.";
+  $("quick").setAttribute("aria-disabled", String(!enabled));
+  for (const b of $("quick").querySelectorAll("button")) b.disabled = !enabled;
+}
+
+function commitKey(chord) {
+  const { select, input } = rowParts(activeRow);
+  const existing = input.value.trim();
+  input.value = Number(select.value) === 3 && existing ? `${existing},${chord}` : chord;
+  for (const b of $("quickMods").children) b.setAttribute("aria-pressed", "false");
+}
+
+function quickButton(label, onClick, title = "") {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = label;
+  if (title) b.title = title;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+for (const mod of MODIFIERS) {
+  const b = quickButton(mod, () => b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")), `Thêm ${mod} vào tổ hợp`);
+  b.setAttribute("aria-pressed", "false");
+  $("quickMods").append(b);
+}
+for (const key of QUICK_KEYS) {
+  $("quickKeys").append(quickButton(key.replace("_", " "), () => {
+    const mods = [...$("quickMods").children].filter((m) => m.getAttribute("aria-pressed") === "true").map((m) => m.textContent);
+    commitKey([...mods, key].join("+"));
+  }));
+}
+for (const [name, label] of MEDIA_KEYS) $("quickMedia").append(quickButton(label, () => commitKey(name), name));
+
+// Names the firmware parses (ble_controller.cpp keyCodeForName) for keys that are not one character.
+const KEY_NAMES = {
+  Enter: "Enter", Tab: "Tab", " ": "Space", Backspace: "Backspace", Delete: "Delete", Insert: "Insert",
+  Home: "Home", End: "End", PageUp: "Page_Up", PageDown: "Page_Down", ArrowUp: "Up", ArrowDown: "Down",
+  ArrowLeft: "Left", ArrowRight: "Right", Escape: "Esc", PrintScreen: "Print_Screen", CapsLock: "Caps_Lock",
+  "+": "plus", MediaPlayPause: "media_play_pause", AudioVolumeUp: "media_volume_up",
+  AudioVolumeDown: "media_volume_down", AudioVolumeMute: "media_volume_mute",
+};
+
+function chordFromEvent(e) {
+  if (["Control", "Alt", "Shift", "Meta", "OS"].includes(e.key)) return null;
+  let key = KEY_NAMES[e.key];
+  if (!key && /^F([1-9]|1\d|2[0-4])$/.test(e.key)) key = e.key;
+  // The physical key for letters and digits, so Shift+1 records "Shift+1", not "!".
+  if (!key && /^Key[A-Z]$/.test(e.code)) key = e.code.slice(3);
+  if (!key && /^Digit\d$/.test(e.code)) key = e.code.slice(5);
+  if (!key && e.key.length === 1) key = e.key;
+  if (!key) return null;
+  const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Win"].filter(Boolean);
+  return [...mods, key].join("+");
+}
+
+function startCapture(row) {
+  stopCapture();
+  selectRow(row);
+  capturing = row;
+  const { capture } = rowParts(row);
+  capture.textContent = "Nhấn phím…";
+  capture.setAttribute("aria-pressed", "true");
+  say("Nhấn tổ hợp phím cần gán, Esc để hủy. Tổ hợp có phím Win thường bị Windows giữ lại, khi đó hãy dùng Phím nhanh.");
+}
+
+function stopCapture() {
+  if (!capturing) return;
+  const { capture } = rowParts(capturing);
+  capture.textContent = "Bắt phím";
+  capture.setAttribute("aria-pressed", "false");
+  capturing = null;
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!capturing) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+    stopCapture();
+    return say("");
+  }
+  const chord = chordFromEvent(e);
+  if (!chord) return;
+  commitKey(chord);
+  stopCapture();
+  say(`Đã gán ${chord}.`, "ok");
+}, true);
+document.addEventListener("click", (e) => { if (capturing && !capturing.contains(e.target)) stopCapture(); });
 
 function validValue(kind, value) {
   if (!NEEDS_VALUE.has(kind)) return null;
@@ -538,8 +694,9 @@ function validValue(kind, value) {
 }
 
 $("saveActions").addEventListener("click", () => busy($("saveActions"), async () => {
-  const wanted = [...$("actionRows").children].map((tr) => {
-    const [select, input] = tr.querySelectorAll("select, input");
+  stopCapture();
+  const wanted = [...$("actionRows").children].map((row) => {
+    const { select, input } = rowParts(row);
     const kind = Number(select.value);
     return [kind, NEEDS_VALUE.has(kind) ? input.value.trim() : ""];
   });
