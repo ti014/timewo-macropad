@@ -63,7 +63,7 @@ chân còn lại của cả ba nút nối chung GND. GPIO8/GPIO9 là chân strap
 cd desktop
 uv sync --locked
 uv run python main.py           # chạy từ source
-./build.ps1                     # EXE: dist/v0.11-single/, kèm thư mục firmware/
+./build.ps1                     # EXE: dist/v0.11.1-single/, kèm thư mục firmware/
 ```
 
 `Mo-Macropad.cmd` mở bản EXE; máy sử dụng không cần cài Python.

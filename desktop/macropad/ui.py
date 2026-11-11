@@ -597,7 +597,7 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         self._resume_macro = False
         self._retry_error: str | None = None
         self._device_info: DeviceInfo | None = None
-        self.setWindowTitle("timewo-macropad — USB/BLE v0.11")
+        self.setWindowTitle("timewo-macropad — USB/BLE v0.11.1")
         self.setWindowIcon(app_icon())
         available = self.screen().availableGeometry()
         self.setMinimumSize(min(760, available.width() - 32), min(440, available.height() - 64))
