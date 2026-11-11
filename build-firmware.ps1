@@ -82,6 +82,8 @@ try {
             name                     = "$title ($name)"
             version                  = $version
             new_install_prompt_erase = $true
+            # The firmware has no Improv Wi-Fi; skip ESP Web Tools' wait for it after flashing.
+            new_install_improv_wait_time = 0
             builds                   = @([ordered]@{
                 chipFamily = $chips[$board].family
                 parts      = @($manifest.full | ForEach-Object { [ordered]@{ path = $_.file; offset = [Convert]::ToInt32($_.offset, 16) } })
