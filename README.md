@@ -199,7 +199,8 @@ kết nối của app, không tắt radio hay bàn phím HID của hệ điều 
 động lại. Máy cũ chỉ nhớ địa chỉ cũ nên không tự kết nối lại được; máy mới thấy
 `timewo-macropad` như thiết bị mới để ghép. Trong tổ hợp, nút 6 và 9 không chạy macro
 và nút 9 không bật/tắt radio. Máy cũ còn một mục `timewo-macropad` không dùng được nữa,
-có thể xóa trong Bluetooth Settings. Board ít nút hơn: giữ nút 1 khi cắm điện để xóa
+có thể xóa trong Bluetooth Settings. Đây không phải nút thử kết nối lại: mỗi lần dùng,
+máy đang ghép cũng phải ghép lại. Board ít nút hơn: giữ nút 1 khi cắm điện để xóa
 ghép đôi (giữ nguyên địa chỉ).
 
 Ví dụ: gán `Mở ứng dụng` với `C:\Program Files\Cockpit Tools\cockpit-tools.exe`.
