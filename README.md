@@ -17,6 +17,12 @@ không cần cài Python. Link trên trỏ tới release đã công khai, không
 Hướng dẫn và ảnh cửa sổ chính/hộp nạp bên dưới dùng giao diện **v0.11.1**;
 nếu bản tải về còn là v0.11.0, giao diện sẽ khác.
 
+**Nạp và cấu hình trên trình duyệt, không cần cài gì:**
+[ti014.github.io/timewo-macropad](https://ti014.github.io/timewo-macropad/).
+Mở bằng Chrome hoặc Edge trên máy tính, cắm board qua USB, bấm `Nạp firmware`,
+rồi `Kết nối board` để đổi GPIO, số nút và gán phím tắt/chuỗi phím. Trang chỉ gán
+được các chức năng board tự chạy; mở app, website hay script vẫn cần app Windows.
+
 ![Giao diện v0.11.1: profile mặc định 4 nút, chưa kết nối, macro chưa bật](docs/images/main-window.png?v=0.11.1)
 
 ## Bắt đầu nhanh
@@ -56,7 +62,7 @@ chưa chạy. Sửa cấu hình sẽ tạm dừng macro, cần lưu và bật l�
 
 ESP32-S2 không có Bluetooth nên không thể làm bàn phím BLE; app nhận diện và báo rõ.
 ESP32-C6/H2 chưa có env vì nền tảng Arduino đang dùng chưa hỗ trợ.
-Tối đa 4 nút. Nút được nối giữa GPIO và GND (pull-up nội, LOW = nhấn).
+Tối đa 9 nút. Nút được nối giữa GPIO và GND (pull-up nội, LOW = nhấn).
 
 ## Đấu nối
 

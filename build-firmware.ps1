@@ -11,9 +11,9 @@ try {
     $bootApp0 = Join-Path $env:USERPROFILE '.platformio\packages\framework-arduinoespressif32\tools\partitions\boot_app0.bin'
     # Board definition -> chip, and where that chip's ROM looks for the bootloader.
     $chips = @{
-        'esp32-c3-devkitm-1' = @{ chip = 'esp32c3'; bootloader = 0x0 }
-        'esp32-s3-devkitc-1' = @{ chip = 'esp32s3'; bootloader = 0x0 }
-        'esp32dev'           = @{ chip = 'esp32'; bootloader = 0x1000 }
+        'esp32-c3-devkitm-1' = @{ chip = 'esp32c3'; family = 'ESP32-C3'; bootloader = 0x0 }
+        'esp32-s3-devkitc-1' = @{ chip = 'esp32s3'; family = 'ESP32-S3'; bootloader = 0x0 }
+        'esp32dev'           = @{ chip = 'esp32'; family = 'ESP32'; bootloader = 0x1000 }
     }
 
     $version = [regex]::Match((Get-Content -Raw 'include/config.h'), 'kFirmwareVersion\[\] = "([^"]+)"').Groups[1].Value
@@ -77,6 +77,17 @@ try {
             )
         }
         [IO.File]::WriteAllText((Join-Path $dest 'manifest.json'), ($manifest | ConvertTo-Json -Depth 5), $utf8)
+        # Same image in ESP Web Tools format, for the browser flasher in web/index.html.
+        $web = [ordered]@{
+            name                     = "$title ($name)"
+            version                  = $version
+            new_install_prompt_erase = $true
+            builds                   = @([ordered]@{
+                chipFamily = $chips[$board].family
+                parts      = @($manifest.full | ForEach-Object { [ordered]@{ path = $_.file; offset = [Convert]::ToInt32($_.offset, 16) } })
+            })
+        }
+        [IO.File]::WriteAllText((Join-Path $dest 'web-manifest.json'), ($web | ConvertTo-Json -Depth 5), $utf8)
         Write-Host "Packaged $name ($($chips[$board].chip), v$version) -> $dest"
     }
 } finally {

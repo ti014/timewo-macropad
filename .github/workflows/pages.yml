@@ -1,0 +1,53 @@
+# Build every firmware env and publish web/index.html with it to GitHub Pages,
+# so boards can be flashed and configured from https://ti014.github.io/timewo-macropad/.
+name: Web flasher
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # build-firmware.ps1 expects Windows paths (USERPROFILE, boot_app0.bin location).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio==6.2.0
+      - run: ./build-firmware.ps1
+        shell: pwsh
+      - name: Assemble site
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force _site | Out-Null
+          Copy-Item web/* _site -Recurse
+          Copy-Item dist/firmware _site/firmware -Recurse
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
