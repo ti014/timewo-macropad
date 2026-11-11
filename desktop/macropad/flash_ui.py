@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -67,8 +68,8 @@ class FlashDialog(QDialog):
             port: Port to preselect.
         """
         super().__init__(parent)
-        self.setWindowTitle("Thiết lập board mới / Cập nhật firmware")
-        self.resize(640, 520)
+        self.setWindowTitle("Nạp mới / Cập nhật firmware qua USB")
+        self.resize(700, 620)
         self._release_port = release_port
         self._packages: list[Package] = []
         self._chip: str | None = None
@@ -86,17 +87,27 @@ class FlashDialog(QDialog):
         self._verify_timer.timeout.connect(self._verify)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("1. Chọn cổng của board và nhận diện chip"))
+        help_text = QLabel(
+            "Chỉ nạp khi bạn bấm Nạp và xác nhận. Cắm USB hoặc Kết nối không nạp firmware. "
+            "Không cần Bluetooth. Không rút cáp trong lúc nạp."
+        )
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        layout.addWidget(QLabel("1. Chọn cổng USB, rồi bấm Nhận diện chip"))
         row = QHBoxLayout()
         self.ports = QComboBox()
         for name, description, likely in available_ports():
             self.ports.addItem(f"{name} — {description}" + (" (ESP32?)" if likely else ""), name)
         if port is not None and self.ports.findData(port) >= 0:
             self.ports.setCurrentIndex(self.ports.findData(port))
+        self.refresh = QPushButton("Tìm lại cổng")
+        self.refresh.clicked.connect(self._refresh_ports)
         self.detect = QPushButton("Nhận diện chip")
         self.detect.clicked.connect(self._detect)
         row.addWidget(self.ports, 1)
+        row.addWidget(self.refresh)
         row.addWidget(self.detect)
+        self.ports.currentIndexChanged.connect(self._port_changed)
         layout.addLayout(row)
         self.chip_label = QLabel("Chưa nhận diện chip.")
         self.chip_label.setWordWrap(True)
@@ -112,9 +123,9 @@ class FlashDialog(QDialog):
         layout.addLayout(row)
 
         layout.addWidget(QLabel("3. Cách nạp"))
-        self.update_mode = QRadioButton("Cập nhật firmware — giữ tên, GPIO và profile trên board")
+        self.update_mode = QRadioButton("Cập nhật / Nạp đè — chỉ ghi firmware, giữ cấu hình")
         self.full_mode = QRadioButton(
-            "Thiết lập board mới — ghi bootloader, bảng phân vùng và firmware"
+            "Nạp mới / Khôi phục — ghi bootloader, bảng phân vùng và firmware"
         )
         self.update_mode.setChecked(True)
         self.erase = QCheckBox("Xóa toàn bộ flash trước khi ghi (mất mọi cấu hình trên board)")
@@ -123,6 +134,10 @@ class FlashDialog(QDialog):
         self.full_mode.toggled.connect(lambda on: on or self.erase.setChecked(False))
         for widget in (self.update_mode, self.full_mode, self.erase):
             layout.addWidget(widget)
+        self.package_hint = QLabel()
+        self.package_hint.setWordWrap(True)
+        layout.addWidget(self.package_hint)
+        self.package.currentIndexChanged.connect(self._update_flash_state)
 
         row = QHBoxLayout()
         self.flash = QPushButton("Nạp và kiểm tra")
@@ -164,7 +179,60 @@ class FlashDialog(QDialog):
         for package in self._packages:
             if self._chip is None or package.chip == self._chip:
                 self.package.addItem(package.label, package)
-        self.flash.setEnabled(self.package.count() > 0 and not self._busy)
+        self._update_flash_state()
+
+    def _update_flash_state(self) -> None:
+        """Require detection for this port before any firmware write."""
+        self.flash.setEnabled(
+            self._chip is not None and self.package.count() > 0
+            and bool(self.ports.currentData()) and not self._busy
+        )
+        if not self._packages:
+            self.package_hint.setText(
+                "Chưa có gói firmware. Tại thư mục repo chạy: "
+                "./build-firmware.ps1 -Env esp32c3 (board 4 nút C3), "
+                "rồi bấm Thư mục firmware… và chọn dist/firmware."
+            )
+        elif self._chip is None:
+            self.package_hint.setText("Bấm Nhận diện chip trước khi nạp. Chưa ghi gì lên board.")
+        elif self.package.count() == 0:
+            self.package_hint.setText("Không có gói phù hợp chip này. Chọn thư mục firmware khác.")
+        else:
+            self.package_hint.setText(
+                "Chọn đúng mẫu board và GPIO. Nạp mới không đặt lại cấu hình cũ "
+                "trừ khi chọn Xóa toàn bộ flash."
+            )
+
+    def _port_changed(self) -> None:
+        """Never reuse a chip detection after selecting a different port."""
+        self._chip = None
+        self.flashed_port = None
+        self.chip_label.setText("Chưa nhận diện chip cho cổng này.")
+        self._fill_packages()
+
+    def _refresh_ports(self) -> None:
+        """Find newly plugged boards without reopening the dialog."""
+        previous = self.ports.currentData()
+        self.ports.blockSignals(True)
+        self.ports.clear()
+        for name, description, likely in available_ports():
+            self.ports.addItem(f"{name} — {description}" + (" (ESP32?)" if likely else ""), name)
+        index = self.ports.findData(previous)
+        if index >= 0:
+            self.ports.setCurrentIndex(index)
+        self.ports.blockSignals(False)
+        self._port_changed()
+
+    def _set_busy(self, busy: bool) -> None:
+        """Lock the entire workflow through writing and post-flash verification."""
+        self._busy = busy
+        for widget in (
+            self.detect, self.close_button, self.ports, self.package, self.refresh,
+            self.folder_button, self.update_mode, self.full_mode,
+        ):
+            widget.setEnabled(not busy)
+        self.erase.setEnabled(not busy and self.full_mode.isChecked())
+        self._update_flash_state()
 
     def _choose_folder(self) -> None:
         """Let the user point at another firmware folder."""
@@ -178,10 +246,8 @@ class FlashDialog(QDialog):
         """Free the port and run esptool in the background."""
         port = self.ports.currentData()
         self._release_port(port)
-        self._busy = True
+        self._set_busy(True)
         self._output = ""
-        for widget in (self.detect, self.flash, self.close_button, self.ports, self.package):
-            widget.setEnabled(False)
         self._note("esptool " + " ".join(args))
         self._worker.start(args)
 
@@ -191,13 +257,18 @@ class FlashDialog(QDialog):
             self._note("Chưa có cổng nào. Cắm board rồi mở lại hộp thoại này.")
             return
         self._target = None
+        self.flashed_port = None
+        self._chip = None
         self._start(detect_args(self.ports.currentData()))
 
     def _flash(self) -> None:
         """Verify the package files, then write them."""
         package = self.package.currentData()
         port = self.ports.currentData()
-        if package is None or not port:
+        if self._busy or package is None or not port:
+            return
+        if self._chip is None or package.chip != self._chip:
+            self._note("Hãy nhận diện chip của cổng đang chọn trước khi nạp.")
             return
         if package.chip in NO_BLE_CHIPS:
             self._note("Chip này không có Bluetooth nên không làm bàn phím BLE được.")
@@ -207,12 +278,28 @@ class FlashDialog(QDialog):
         except (OSError, ValueError) as exc:
             self._note(str(exc))
             return
+        full = self.full_mode.isChecked()
+        erase = full and self.erase.isChecked()
+        mode = "Nạp mới / Khôi phục" if full else "Cập nhật / Nạp đè"
+        effect = (
+            "XÓA TOÀN BỘ FLASH: mất tên, GPIO, profile và ghép đôi đã lưu trên board."
+            if erase else "Không yêu cầu xóa cấu hình đã lưu trên board."
+        )
+        answer = QMessageBox.question(
+            self, "Xác nhận nạp firmware",
+            f"{mode} trên {port}\n{package.label}\n\n{effect}\n"
+            "Board sẽ khởi động lại. Không rút cáp cho đến khi kiểm tra xong.\n"
+            "Khi kết nối lại, app sẽ chép profile đang chọn vào board.\n\nTiếp tục?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.flashed_port = None
         self._target = package
         self._identity = identify_usb_device(port)
         self.progress.setValue(0)
-        self._start(write_args(
-            package, port, full=self.full_mode.isChecked(), erase=self.erase.isChecked()
-        ))
+        self._start(write_args(package, port, full=full, erase=erase))
 
     def _append(self, text: str) -> None:
         """Show esptool output and progress as it arrives."""
@@ -227,15 +314,13 @@ class FlashDialog(QDialog):
 
     def _esptool_finished(self, code: int) -> None:
         """Report the run, then check the board when firmware was written."""
-        self._busy = False
-        for widget in (self.detect, self.close_button, self.ports, self.package):
-            widget.setEnabled(True)
         if self._target is None:
+            self._set_busy(False)
             self._detected(code)
             return
         if code != 0:
             self._note("Nạp thất bại. Kiểm tra cáp/cổng; nếu cần, giữ BOOT khi cắm board rồi thử lại.")
-            self.flash.setEnabled(True)
+            self._set_busy(False)
             return
         self.progress.setValue(100)
         self._note("Đã ghi xong. Đang chờ board khởi động và trả lời…")
@@ -279,11 +364,11 @@ class FlashDialog(QDialog):
                 self._verify_timer.start(VERIFY_INTERVAL_MS)
             else:
                 self._note(f"Board chưa trả lời sau khi nạp ({exc}). Rút ra cắm lại rồi bấm Kết nối.")
-                self.flash.setEnabled(True)
+                self._set_busy(False)
             return
         finally:
             connection.close()
-        self.flash.setEnabled(True)
+        self._set_busy(False)
         if info.chip != package.chip or info.firmware != package.version:
             self._note(
                 f"Board trả lời nhưng chạy {info.chip} firmware {info.firmware}, "

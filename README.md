@@ -52,6 +52,7 @@ chân còn lại của cả ba nút nối chung GND. GPIO8/GPIO9 là chân strap
 
 - Windows 10/11 (app desktop; phần lớn code chạy được trên Linux, xem ghi chú bên dưới).
 - Build firmware: [PlatformIO Core](https://platformio.org/install/cli) (`pio` trong PATH).
+  Platform `espressif32` khóa ở `6.10.0` (Arduino-ESP32 2.x) để khớp BLE API hiện tại.
 - Build/chạy app: [uv](https://docs.astral.sh/uv/) và Python 3.11–3.13.
 - Chỉ dùng EXE đã build: không cần cài gì thêm.
 
@@ -69,15 +70,22 @@ uv run python main.py           # chạy từ source
 
 ## Nạp firmware trong app
 
-`Tùy chọn → Thiết lập board mới / Nạp firmware…`:
+Mở `Nạp firmware…` trên cửa sổ chính (hoặc mục nạp firmware trong `Tùy chọn`).
+Cắm USB hay bấm kết nối **không tự nạp firmware**.
 
-1. Chọn cổng, bấm `Nhận diện chip` (esptool đọc loại chip).
-2. Chọn mẫu board; danh sách chỉ hiện gói đúng chip.
-3. `Cập nhật firmware` chỉ ghi `firmware.bin` ở 0x10000, giữ nguyên NVS (profile,
-   tên, GPIO). `Thiết lập board mới` ghi thêm bootloader, bảng phân vùng, boot_app0;
-   chỉ xóa toàn bộ flash khi bạn tự đánh dấu.
-4. App kiểm tra SHA-256 từng file, nạp, rồi đợi board khởi động và trả lời `INFO`
-   đúng chip và phiên bản mới mới báo thành công, sau đó tự kết nối.
+1. Chọn cổng, bấm `Nhận diện chip` (esptool đọc loại chip). Nếu vừa cắm board,
+   bấm `Tìm lại cổng`; đổi cổng phải nhận diện lại trước khi nạp.
+2. Chọn mẫu board; danh sách chỉ hiện gói đúng chip. Nếu chạy từ source chưa có gói,
+   build bằng `./build-firmware.ps1 -Env esp32c3` cho board C3 4 nút, rồi chọn
+   thư mục `dist/firmware`.
+3. `Cập nhật / Nạp đè` chỉ ghi `firmware.bin` ở 0x10000, giữ nguyên NVS (profile,
+   tên, GPIO). `Nạp mới / Khôi phục` ghi thêm bootloader, bảng phân vùng, boot_app0;
+   vẫn giữ cấu hình cũ nếu không chọn `Xóa toàn bộ flash`. Chỉ chọn xóa khi muốn
+   thiết lập lại từ đầu và chấp nhận mất cấu hình/ghép đôi trên board.
+4. Bấm `Nạp và kiểm tra`, kiểm tra cổng, mẫu board và cảnh báo trong hộp xác nhận.
+   App kiểm tra SHA-256 từng file, nạp, rồi đợi board khởi động và trả lời `INFO`
+   đúng chip và phiên bản mới mới báo thành công. Các điều khiển bị khóa đến khi
+   kiểm tra xong; không rút cáp trong lúc này.
 
 Nạp bằng PlatformIO vẫn dùng được: `pio run -e ti-clicker -t upload`.
 
@@ -109,6 +117,14 @@ Danh sách hành động chia hai nhóm, mỗi hàng ghi `Board` hoặc `Máy t�
 USB của board là Serial để cấu hình, không phải bàn phím USB HID.
 
 ## Cách dùng USB và Bluetooth
+
+**Dùng dây, không cần Bluetooth:** kết nối cổng USB trong app, để chế độ board
+`Tự động`, lưu cấu hình, bỏ `Chỉ kiểm tra nút`, bật macro rồi chuyển sang ứng dụng
+đích hoặc ẩn app xuống khay. App nhận nút qua Serial và thực hiện macro trên Windows;
+phải giữ app chạy nền. ESP32-C3 không có bàn phím USB HID trực tiếp.
+
+**Dùng không cần app:** board tự gõ qua Bluetooth HID. Ghép board như bàn phím
+Bluetooth trong Windows; USB lúc này có thể chỉ cấp nguồn.
 
 1. Đóng app cũ và Serial Monitor. Mở EXE mới, chọn cổng USB của board rồi bấm
    `Kết nối`. App đọc địa chỉ Bluetooth từ chính board để tránh chọn nhầm thiết bị.

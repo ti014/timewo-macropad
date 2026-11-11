@@ -19,9 +19,12 @@ class BridgeUiMixin:
         self._bridge_settings = QSettings("Macropad", "MacropadConfigurator")
 
     def _build_bridge_controls(self, device_bar, options_menu) -> None:
-        self.bluetooth_button = QPushButton("Bluetooth")
+        self.bluetooth_button = QPushButton("Bluetooth (tùy chọn)")
         self.bluetooth_button.setCheckable(True)
-        self.bluetooth_button.setToolTip("Kết nối app qua Bluetooth; ghép lần đầu cần firmware mới.")
+        self.bluetooth_button.setToolTip(
+            "Chỉ cần bật nếu muốn app nhận nút không dây. USB vẫn là cách chính để cấu hình và lưu profile. "
+            "Board tự gõ phím khi app tắt cần ghép Bluetooth riêng."
+        )
         self.bluetooth_button.toggled.connect(self._toggle_bluetooth)
         device_bar.insertWidget(3, self.bluetooth_button)
         options_menu.addSeparator()

@@ -618,8 +618,15 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         layout.addLayout(heading)
 
         device_group = QWidget()
-        device_bar = QHBoxLayout(device_group)
-        device_bar.setContentsMargins(0, 0, 3, 3)
+        device_layout = QVBoxLayout(device_group)
+        device_layout.setContentsMargins(0, 0, 3, 3)
+        device_layout.setSpacing(2)
+        self.usb_note = QLabel("Dùng dây USB: kết nối COM, bật macro và giữ app chạy nền. Không cần Bluetooth.")
+        self.usb_note.setObjectName("usbNote")
+        self.usb_note.setWordWrap(True)
+        device_layout.addWidget(self.usb_note)
+        device_bar = QHBoxLayout()
+        device_bar.setContentsMargins(0, 0, 0, 0)
         self.ports = QComboBox()
         self.ports.setMinimumContentsLength(18)
         self.ports.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
@@ -634,6 +641,7 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         device_bar.addWidget(self.refresh)
         device_bar.addWidget(self.connect_button)
         device_bar.addWidget(self.status)
+        device_layout.addLayout(device_bar)
         layout.addWidget(device_group)
 
         self.profiles = QComboBox()
@@ -724,7 +732,21 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         self.arm.setEnabled(False)
         self.arm.toggled.connect(self._arm_changed)
         self.preview = MarkedCheckBox("Chỉ kiểm tra nút")
-        self.preview.setToolTip("Nhận tín hiệu từ nút nhưng không thực hiện macro.")
+        self.preview.setToolTip("Nhận tín hiệu từ nút nhưng không thực hiện macro. Bỏ chọn mới cho phép chạy macro.")
+        self.firmware_button = QPushButton("Nạp firmware…")
+        self.firmware_button.setToolTip(
+            "Cài mới hoặc cập nhật firmware qua USB, có xác nhận trước khi ghi. "
+            "Sau khi nạp, app kết nối lại và chép profile đang chọn vào board."
+        )
+        self.firmware_button.clicked.connect(lambda: self._open_flasher())
+        self.firmware_button.setObjectName("firmware")
+        self.firmware_button.setStyleSheet("QPushButton#firmware { background: #fffdf5; }")
+        self.arm.setToolTip("Chỉ bật sau khi lưu cấu hình và bỏ chọn Chỉ kiểm tra nút.")
+        self.run_hint = QLabel("Đang kiểm tra — macro tạm dừng. Bỏ chọn để bật chạy.")
+        self.run_hint.setObjectName("muted")
+        self.run_hint.setWordWrap(True)
+        self.preview.toggled.connect(self._update_run_hint)
+        self.arm.toggled.connect(self._update_run_hint)
         self.preview.setChecked(True)
         self.preview.toggled.connect(self._pause_macro)
         self.save_button = QPushButton("Lưu cấu hình")
@@ -736,21 +758,18 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             add_hard_shadow(action_button, offset=3)
         controls.setSpacing(8)
         controls.addWidget(self.preview, 1)
+        controls.addWidget(self.firmware_button)
         controls.addWidget(self.save_button)
         controls.addWidget(self.arm)
         layout.addWidget(run_group)
+        layout.addWidget(self.run_hint)
+        self._update_run_hint()
 
-        help_label = QLabel(
-            "App đang mở: app chạy macro. Tắt app hoặc sang máy khác: board tự gõ phím tắt qua Bluetooth."
+        self.run_hint.setToolTip(
+            "USB: app chạy macro, phải giữ app mở. Không cần Bluetooth. "
+            "Tắt app: board chỉ tự gõ phím tắt khi đã ghép Bluetooth. "
+            "Macro tác động vào cửa sổ đích, không chạy trong cửa sổ cấu hình."
         )
-        help_label.setToolTip(
-            "Lưu là board nhận profile ngay. Mở app, URL và văn bản chỉ chạy khi app đang mở. "
-            "Macro tác động vào cửa sổ đang chọn. Khi sửa cấu hình, macro tự tạm dừng. "
-            "Rút/cắm USB sẽ tự khôi phục kết nối và trạng thái macro."
-        )
-        help_label.setObjectName("muted")
-        help_label.setWordWrap(True)
-        layout.addWidget(help_label)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(200)
@@ -791,6 +810,20 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             self.watch_timer.start()
             if self._bridge_settings.value("ble/enabled", False, type=bool):
                 self.bluetooth_button.setChecked(True)
+
+    def _update_run_hint(self, *_args) -> None:
+        """Make test-only versus macro-enabled intent visible."""
+        if not hasattr(self, "run_hint"):
+            return
+        if self.preview.isChecked():
+            text = "Đang kiểm tra — nhận nút, không chạy macro."
+        elif self._dirty:
+            text = "Chưa chạy — hãy lưu cấu hình trước khi bật macro."
+        elif self.arm.isChecked():
+            text = "Macro đang bật — chuyển sang cửa sổ đích để chạy."
+        else:
+            text = "Sẵn sàng chạy sau khi kết nối — bấm Bật macro, rồi chuyển sang cửa sổ đích."
+        self.run_hint.setText(text)
 
     def _select_card(self, card: ButtonEditor) -> None:
         """Set the target row for quick-key clicks and show it clearly."""
@@ -853,6 +886,7 @@ class MainWindow(BridgeUiMixin, QMainWindow):
     def _update_save_label(self) -> None:
         """Mark local configuration edits without changing the button meaning."""
         self.save_button.setText("Lưu cấu hình" + (" *" if self._dirty else ""))
+        self._update_run_hint()
 
     def _load_cards(self) -> None:
         """Display the active profile without marking it dirty."""

@@ -183,6 +183,28 @@ def test_secondary_controls_are_in_options_menu(window) -> None:
     assert not window.log.isHidden()
 
 
+def test_primary_usb_firmware_and_run_guidance_is_clear(window) -> None:
+    """USB leads workflow; optional Bluetooth and safe run states stay explicit."""
+    assert "USB" in window.usb_note.text()
+    assert window.firmware_button.text() == "Nạp firmware…"
+    assert not window.firmware_button.isHidden()
+    assert "kiểm tra" in window.run_hint.text().lower()
+    assert "Bluetooth" in window.bluetooth_button.text()
+    assert "tùy chọn" in window.bluetooth_button.text()
+    window.preview.setChecked(False)
+    assert "sẵn sàng chạy" in window.run_hint.text().lower()
+    window._dirty = True
+    window._update_save_label()
+    assert "lưu cấu hình" in window.run_hint.text().lower()
+    assert not window.arm.isChecked()
+
+
+def test_fresh_firmware_button_opens_existing_flow(window) -> None:
+    with patch.object(window, "_open_flasher") as open_flasher:
+        window.firmware_button.click()
+    open_flasher.assert_called_once_with()
+
+
 def test_save_copies_profile_to_connected_board_only(window) -> None:
     """One Save button keeps the board current, so it works without the app."""
     with patch.object(window, "_save", return_value=True) as save:
