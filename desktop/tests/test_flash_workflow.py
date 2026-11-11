@@ -56,7 +56,7 @@ def test_cancel_confirmation_never_writes(dialog):
 def test_update_writes_only_app_and_detection_never_flashes(dialog):
     with patch.object(dialog, "_start") as start:
         dialog._detect()
-    assert start.call_args.args[0][-1] == "chip_id"
+    assert start.call_args.args[0][-1] == "chip-id"
     detect(dialog)
     with patch("macropad.flash_ui.QMessageBox.question", return_value=QMessageBox.Yes), patch(
         "macropad.flash_ui.identify_usb_device", return_value=None

@@ -144,7 +144,7 @@ def write_args(package: Package, port: str, *, full: bool, erase: bool) -> list[
     """
     images = package.full if full else (package.app,)
     args = ["--chip", package.chip, "--port", port, "--baud", "460800"]
-    args += ["--before", "default_reset", "--after", "hard_reset", "write_flash"]
+    args += ["--before", "default-reset", "--after", "hard-reset", "write-flash"]
     if full and erase:
         args.append("--erase-all")
     for image in images:
@@ -154,7 +154,7 @@ def write_args(package: Package, port: str, *, full: bool, erase: bool) -> list[
 
 def detect_args(port: str) -> list[str]:
     """esptool arguments that only read the chip type."""
-    return ["--port", port, "--before", "default_reset", "--after", "hard_reset", "chip_id"]
+    return ["--port", port, "--before", "default-reset", "--after", "hard-reset", "chip-id"]
 
 
 def parse_chip(output: str) -> str | None:
@@ -164,9 +164,9 @@ def parse_chip(output: str) -> str | None:
 
 
 def parse_progress(output: str) -> int | None:
-    """Last ``(NN %)`` progress value esptool printed."""
-    found = re.findall(r"\((\d{1,3}) ?%\)", output)
-    return min(int(found[-1]), 100) if found else None
+    """Last percentage from esptool's legacy or 5.x progress output."""
+    found = re.findall(r"(\d{1,3}(?:\.\d+)?)\s*%", output)
+    return min(int(float(found[-1])), 100) if found else None
 
 
 def run_esptool(args: list[str], write) -> int:

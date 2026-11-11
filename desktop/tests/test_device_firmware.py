@@ -217,12 +217,14 @@ def test_package_rejects_escaping_path_and_bad_chip(tmp_path: Path) -> None:
 
 def test_esptool_output_parsing() -> None:
     """Chip and progress come from esptool's own text."""
-    assert detect_args("COM9")[-1] == "chip_id"
+    assert detect_args("COM9")[-1] == "chip-id"
     assert parse_chip("Connecting....\nDetecting chip type... ESP32-C3\nChip is ESP32-C3") == "esp32c3"
     assert parse_chip("Detecting chip type... ESP32\nChip is ESP32-D0WD-V3") == "esp32"
     assert parse_chip("Detecting chip type... ESP32-S2\n") == "esp32s2"
     assert parse_chip("A fatal error occurred: Failed to connect") is None
     assert parse_progress("Writing at 0x00010000... (3 %)\rWriting at 0x00020000... (47 %)") == 47
+    assert parse_progress("Writing at 0x00020000 [====>     ] 47.8% ") == 47
+    assert parse_progress("Writing at 0x00030000 [==========] 100.0% ") == 100
 
 
 def test_uart_bridge_keeps_dtr_low() -> None:
@@ -242,4 +244,4 @@ def test_esptool_crash_still_reports_failure() -> None:
 
     out: list[str] = []
     with patch("macropad.firmware.esptool.main", side_effect=StopIteration):
-        assert run_esptool(["chip_id"], out.append) == 1
+        assert run_esptool(["chip-id"], out.append) == 1

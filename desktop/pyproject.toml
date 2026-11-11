@@ -8,7 +8,7 @@ dependencies = [
     "pyserial==3.5",
     "pynput>=1.7.7,<2",
     "bleak==3.0.2",
-    "esptool==4.8.1",
+    "esptool==5.0.2",
 ]
 
 [dependency-groups]
