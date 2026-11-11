@@ -194,6 +194,14 @@ Giữ **nút cuối** (nút 4 trên macropad, nút 3 trên Ti Clicker) để b�
 Nhấn ngắn nút cuối chạy macro khi thả nút. Bỏ chọn nút `Bluetooth (tùy chọn)` chỉ ngắt
 kết nối của app, không tắt radio hay bàn phím HID của hệ điều hành.
 
+**Ghép máy mới (board từ 9 nút):** giữ nút 9, rồi giữ thêm nút 6 khoảng thời gian giữ
+(mặc định 2,5 giây). Board xóa ghép đôi cũ, đổi sang một địa chỉ Bluetooth mới và khởi
+động lại. Máy cũ chỉ nhớ địa chỉ cũ nên không tự kết nối lại được; máy mới thấy
+`timewo-macropad` như thiết bị mới để ghép. Trong tổ hợp, nút 6 và 9 không chạy macro
+và nút 9 không bật/tắt radio. Máy cũ còn một mục `timewo-macropad` không dùng được nữa,
+có thể xóa trong Bluetooth Settings. Board ít nút hơn: giữ nút 1 khi cắm điện để xóa
+ghép đôi (giữ nguyên địa chỉ).
+
 Ví dụ: gán `Mở ứng dụng` với `C:\Program Files\Cockpit Tools\cockpit-tools.exe`.
 App gọi thẳng EXE qua hệ điều hành, không gõ đường dẫn vào Run nên không
 bị Telex biến đổi. `Văn bản` dán Unicode bằng clipboard và Ctrl+V; thao tác này

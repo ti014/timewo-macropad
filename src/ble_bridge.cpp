@@ -76,6 +76,10 @@ void BridgeKeyboard::start(const char* name, bool enabled, bool forgetBonds) {
     if (enabled_) advertising->start();
 }
 
+void BridgeKeyboard::forgetBonds() {
+    removeAllBonds();
+}
+
 void BridgeKeyboard::setEnabled(bool enabled) {
     enabled_ = enabled;
     if (!started_) return;

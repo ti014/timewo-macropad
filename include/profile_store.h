@@ -28,6 +28,9 @@ public:
     void setBleEnabled(bool enabled);
     bool standalone() const { return standalone_; }
     void setStandalone(bool enabled);
+    // Picks the Bluetooth address; each new pairing moves to the next one (0 = factory).
+    uint8_t bleIdentity() const { return bleIdentity_; }
+    void nextBleIdentity();
 
     const DeviceSettings& device() const { return device_; }
     // Validates, persists, then reloads from NVS so the caller reports what was stored.
@@ -40,6 +43,7 @@ private:
     MacroAction staged_[kButtonCount]{};
     bool bleEnabled_ = true;
     bool standalone_ = false;
+    uint8_t bleIdentity_ = 0;
     DeviceSettings device_{};
     Preferences preferences_;
 

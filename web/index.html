@@ -193,6 +193,7 @@ td input, td select { width: 100%; }
     <div class="body">
       <p>Để dùng không dây: mở Bluetooth trên máy tính hoặc điện thoại, chọn <b>Thêm thiết bị</b>, rồi ghép với <b id="doneName"></b>.</p>
       <p>Lúc này USB chỉ cần để cấp nguồn, có thể cắm sạc dự phòng. Giữ nút cuối khoảng <span id="doneHold"></span> giây để bật hoặc tắt Bluetooth.</p>
+      <p id="pairHint" hidden>Mang sang máy khác: giữ <b>nút 9</b>, rồi giữ thêm <b>nút 6</b> khoảng <span class="holdSeconds"></span> giây. Board đổi sang địa chỉ Bluetooth mới để máy mới ghép như thiết bị mới, máy cũ không giành kết nối được nữa.</p>
       <div class="actions"><button id="again" class="secondary">Cấu hình lại</button></div>
     </div>
   </section>
@@ -604,6 +605,9 @@ $("finish").addEventListener("click", async () => {
   await stopTest();
   $("doneName").textContent = info.name;
   $("doneHold").textContent = (info.holdMs / 1000).toLocaleString("vi-VN");
+  // Matches config::kPairButtons {6, 9} in the firmware.
+  $("pairHint").hidden = info.pins.length < 9;
+  document.querySelector(".holdSeconds").textContent = $("doneHold").textContent;
   say("");
   go("done");
 });

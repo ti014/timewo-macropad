@@ -8,6 +8,7 @@ enum class ButtonEventType : uint8_t {
     Pressed,
     Released,
     LongPressed,
+    PairRequested,  // kPairButtons held together for holdMs
 };
 
 struct ButtonEvent {
@@ -35,10 +36,15 @@ private:
         uint32_t lastChangeMs = 0;
         uint32_t pressedAtMs = 0;
         uint32_t pressCount = 0;
+        bool swallowed = false;  // part of the pairing combo: runs no action of its own
     };
 
     DeviceSettings settings_{};
     State states_[config::kMaxButtons]{};
+    bool pairReported_ = false;
+
+    uint8_t pairPartner(uint8_t number) const;
+    void checkPair(uint32_t now, ButtonEventHandler handler);
 
     // The last button doubles as the Bluetooth on/off switch when held.
     bool isToggleButton(uint8_t number) const { return number == settings_.buttonCount; }
