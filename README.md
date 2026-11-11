@@ -86,7 +86,7 @@ chân còn lại của cả ba nút nối chung GND. GPIO8/GPIO9 là chân strap
 cd desktop
 uv sync --locked
 uv run python main.py           # chạy từ source
-./build.ps1                     # EXE: dist/v0.11.1-single/, kèm thư mục firmware/
+./build.ps1                     # EXE: dist/v0.12.0-single/, kèm thư mục firmware/
 ```
 
 `Mo-Macropad.cmd` mở bản EXE; máy sử dụng không cần cài Python.
@@ -296,8 +296,11 @@ Kết nối BLE sử dụng pairing/encryption; việc ghi lệnh thành công k
 
 ## Kiểm thử
 
-Khi chuẩn bị v0.11.1: **192 tests đạt**, Ruff sạch, firmware build và kiểm tra
-SHA-256 cho cả 4 env; EXE đóng gói vượt smoke-test. Tests gồm chống thực thi trùng,
+Khi chuẩn bị v0.12.0: **195 tests đạt**, Ruff sạch, firmware build cho cả 4 env;
+EXE đóng gói khởi động và ghi log đúng phiên bản. Phần cứng v0.12.0 trên ESP32-C3
+9 nút: lưu 9 GPIO bằng CFG rồi đọc lại, kiểm tra từng nút, tổ hợp 6+9 đổi địa chỉ
+Bluetooth, và Windows ghép thành công sau bản sửa IRK (trước đó bị từ chối, sự kiện
+BTHUSB 35). Chưa thử chuyển sang máy thứ hai bằng tổ hợp 6+9. Lượt v0.11.1: Tests gồm chống thực thi trùng,
 pause/reconnect, đổi mode, clipboard, INFO/CFG/DUMP, gói firmware và esptool 5,
 bắt buộc nhận diện trước nạp, hủy xác nhận không ghi, nạp đè/nạp mới và timeout
 kiểm tra sau nạp. Đây là kết quả kiểm tra phần mềm, không thay thế thử phần cứng.
