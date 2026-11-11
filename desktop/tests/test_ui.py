@@ -1,6 +1,7 @@
 """Offscreen UI integration tests; keyboard and serial backends are mocked."""
 
 import os
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -156,7 +157,7 @@ def test_small_window_scrolls_instead_of_overlapping_rows(window, app) -> None:
     window.log_toggle.setChecked(True)
     app.processEvents()
     shown = [card for card in window.cards if card.isVisible()]
-    for current, following in zip(shown, shown[1:]):
+    for current, following in pairwise(shown):
         assert current.geometry().bottom() < following.geometry().top()
     buttons = window.quick_keys.key_buttons
     assert buttons["a"].geometry().bottom() < buttons["tab"].geometry().top()

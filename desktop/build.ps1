@@ -5,9 +5,9 @@ Push-Location -LiteralPath $PSScriptRoot
 try {
     uv sync --locked
     if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
-    $dist = 'dist/v0.11.1-single'
+    $dist = 'dist/v0.12.0-single'
     # esptool loads its flasher stubs from JSON data files at runtime.
-    uv run pyinstaller --noconfirm --windowed --onefile --distpath $dist --workpath build/v0.11.1-single --specpath build/v0.11.1-single --name timewo-macropad-v0.11.1-windows-x64 --hidden-import pynput.keyboard._win32 --hidden-import pynput.mouse._win32 --hidden-import bleak.backends.winrt.client --hidden-import bleak.backends.winrt.scanner --collect-data esptool --collect-submodules esptool main.py
+    uv run pyinstaller --noconfirm --windowed --onefile --distpath $dist --workpath build/v0.12.0-single --specpath build/v0.12.0-single --name timewo-macropad-v0.12.0-windows-x64 --hidden-import pynput.keyboard._win32 --hidden-import pynput.mouse._win32 --hidden-import bleak.backends.winrt.client --hidden-import bleak.backends.winrt.scanner --collect-data esptool --collect-submodules esptool main.py
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
     # The flasher looks for packages in "firmware" next to the EXE.
     $firmware = Join-Path $PSScriptRoot '..\dist\firmware'

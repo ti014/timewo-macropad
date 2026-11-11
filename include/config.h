@@ -15,7 +15,7 @@ namespace config {
 #ifndef MACROPAD_BOARD
 #define MACROPAD_BOARD "macropad4"
 #endif
-constexpr char kFirmwareVersion[] = "0.11.1";
+constexpr char kFirmwareVersion[] = "0.12.0";
 constexpr char kBoardId[] = MACROPAD_BOARD;
 constexpr uint8_t kDefaultPins[] = {MACROPAD_PINS};
 constexpr char kDefaultName[] = MACROPAD_NAME;
