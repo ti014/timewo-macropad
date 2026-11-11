@@ -12,13 +12,30 @@ Ti Clicker, sản phẩm hoàn thiện: ESP32-C3 Super Mini trong vỏ in 3D, 3 
 (PgUp, PgDn và một phím tùy chọn), dùng làm remote trình chiếu qua Bluetooth.
 
 **Tải về:** [bản mới nhất cho Windows](https://github.com/ti014/timewo-macropad/releases/latest).
-Tải file `.zip`, giải nén rồi chạy EXE, không cần cài Python.
+Tải file `.zip`, giải nén **cả EXE và thư mục `firmware/` cạnh EXE**, rồi chạy app;
+không cần cài Python. Link trên trỏ tới release đã công khai, không phải bản draft.
+Hướng dẫn và ảnh cửa sổ chính/hộp nạp bên dưới dùng giao diện **v0.11.1**;
+nếu bản tải về còn là v0.11.0, giao diện sẽ khác.
 
-![Cửa sổ chính: gán phím cho 3 nút của Ti Clicker](docs/images/main-window.png)
+![Giao diện v0.11.1: profile mặc định 4 nút, chưa kết nối, macro chưa bật](docs/images/main-window.png)
 
-| Đổi tên, GPIO, thời gian nút | Nạp firmware và kiểm tra |
-|---|---|
-| ![Hộp thoại Thiết bị](docs/images/device-dialog.png) | ![Hộp thoại nạp firmware](docs/images/flash-dialog.png) |
+## Bắt đầu nhanh
+
+- **Board đã có firmware:** không cần nạp lại. Cắm cáp USB có truyền dữ liệu,
+  bấm `Làm mới`, chọn COM của board rồi `Kết nối`.
+- **Board mới hoặc cần khôi phục:** bấm `Nạp firmware…` ngay cửa sổ chính,
+  làm theo phần [nạp firmware](#nạp-firmware-trong-app), rồi kết nối board.
+- **Dùng dây USB:** app phải chạy nền; không cần Bluetooth.
+- **Dùng độc lập, không mở app:** lưu profile vào board rồi ghép Bluetooth HID
+  với máy đích. USB lúc đó chỉ cần cấp nguồn.
+
+**Lưu ý:** mỗi lần kết nối lại, app chép profile đang chọn vào board. Chọn đúng
+profile trước khi kết nối; kết nối không có nghĩa là đọc profile từ board về app.
+Cắm USB hoặc bấm `Kết nối` không tự nạp firmware.
+
+Thanh dưới có `Chỉ kiểm tra nút`, `Nạp firmware…`, `Lưu cấu hình`, `Bật macro`.
+App khởi động ở chế độ kiểm tra; dòng trạng thái phía dưới cho biết vì sao macro
+chưa chạy. Sửa cấu hình sẽ tạm dừng macro, cần lưu và bật lại.
 
 ## Thành phần
 
@@ -73,6 +90,20 @@ uv run python main.py           # chạy từ source
 Mở `Nạp firmware…` trên cửa sổ chính (hoặc mục nạp firmware trong `Tùy chọn`).
 Cắm USB hay bấm kết nối **không tự nạp firmware**.
 
+![Hộp nạp v0.11.1: chọn Nạp mới / Khôi phục, chưa nhận diện chip, chưa ghi flash](docs/images/flash-dialog.png)
+
+Ảnh minh họa trạng thái trước nhận diện; mẫu board đang hiện chưa phải kết quả
+nhận diện phần cứng. Sau nhận diện, chọn đúng mẫu và GPIO, không chỉ đúng chip.
+
+| Tình trạng board | Cách nạp |
+|---|---|
+| Đang chạy firmware của dự án, chỉ nâng phiên bản | `Cập nhật / Nạp đè` |
+| Board trắng hoặc cần ghi lại bootloader/phân vùng | `Nạp mới / Khôi phục` |
+| Muốn xóa cả cấu hình và ghép đôi cũ | `Nạp mới / Khôi phục` và chọn `Xóa toàn bộ flash` |
+
+**Xóa toàn bộ flash làm mất tên, GPIO, profile và ghép đôi đã lưu. Mặc định không chọn.**
+Nạp mới không tự đổi cấu hình NVS còn tồn tại về mặc định của mẫu board.
+
 1. Chọn cổng, bấm `Nhận diện chip` (esptool đọc loại chip). Nếu vừa cắm board,
    bấm `Tìm lại cổng`; đổi cổng phải nhận diện lại trước khi nạp.
 2. Chọn mẫu board; danh sách chỉ hiện gói đúng chip. Nếu chạy từ source chưa có gói,
@@ -87,9 +118,16 @@ Cắm USB hay bấm kết nối **không tự nạp firmware**.
    đúng chip và phiên bản mới mới báo thành công. Các điều khiển bị khóa đến khi
    kiểm tra xong; không rút cáp trong lúc này.
 
+Sau khi log báo `Thành công`, đóng hộp nạp để app kết nối lại và đồng bộ profile
+đang chọn. Thanh tiến trình 100% chỉ có nghĩa ghi flash xong; vẫn cần chờ bước
+kiểm tra board trả lời. Nhận diện chip không ghi firmware, nhưng có thể reset board
+và ngắt kết nối USB của app.
+
 Nạp bằng PlatformIO vẫn dùng được: `pio run -e ti-clicker -t upload`.
 
 ## Đổi tên, GPIO, thời gian nút
+
+![Hộp thoại Thiết bị: tên, GPIO và thời gian nút; ảnh từ v0.11.0](docs/images/device-dialog.png)
 
 `Tùy chọn → Thiết bị (tên, GPIO, thời gian)…` (cần USB). Ví dụ: đổi `Ti Clicker`
 thành `Remote Phuong`, nút 3 từ GPIO9 sang GPIO10, bấm `Lưu vào thiết bị`.
@@ -118,27 +156,36 @@ USB của board là Serial để cấu hình, không phải bàn phím USB HID.
 
 ## Cách dùng USB và Bluetooth
 
-**Dùng dây, không cần Bluetooth:** kết nối cổng USB trong app, để chế độ board
-`Tự động`, lưu cấu hình, bỏ `Chỉ kiểm tra nút`, bật macro rồi chuyển sang ứng dụng
-đích hoặc ẩn app xuống khay. App nhận nút qua Serial và thực hiện macro trên Windows;
-phải giữ app chạy nền. ESP32-C3 không có bàn phím USB HID trực tiếp.
+### USB: app chạy macro, Bluetooth không bắt buộc
 
-**Dùng không cần app:** board tự gõ qua Bluetooth HID. Ghép board như bàn phím
-Bluetooth trong Windows; USB lúc này có thể chỉ cấp nguồn.
+1. Đóng app cũ hoặc Serial Monitor đang giữ cổng. Cắm board, bấm `Làm mới`,
+   chọn COM rồi `Kết nối`. Đợi app nhận diện và đồng bộ xong.
+2. Để `Tùy chọn → Chế độ board → Tự động`. Chọn profile, gán nút rồi bấm
+   `Lưu cấu hình`.
+3. Bỏ chọn `Chỉ kiểm tra nút`, bấm `Bật macro`.
+4. Chuyển sang cửa sổ đích hoặc chọn `Tùy chọn → Ẩn xuống khay`. Giữ app chạy nền;
+   đóng app sẽ ngừng xử lý macro USB. Macro không chạy khi cửa sổ app có focus.
 
-1. Đóng app cũ và Serial Monitor. Mở EXE mới, chọn cổng USB của board rồi bấm
-   `Kết nối`. App đọc địa chỉ Bluetooth từ chính board để tránh chọn nhầm thiết bị.
-2. Bấm `Bluetooth` để kết nối app với board. Nếu radio đang tắt và USB đã kết nối,
-   thao tác này bật radio. Chấp nhận yêu cầu ghép đôi của Windows nếu xuất hiện.
-3. Gán nút, bấm `Lưu cấu hình`, bỏ chọn `Chỉ kiểm tra nút`, rồi bấm `Bật macro`.
-   Chuyển sang ứng dụng đích hoặc ẩn app xuống khay; macro không chạy khi cửa sổ
-   cấu hình đang có focus.
-4. App nhận nút qua cả hai đường, dùng ID sự kiện để chỉ chạy một lần. Khi mất
-   kết nối, app nối lại và chỉ khôi phục macro nếu trước đó bạn đã bật. Tạm dừng
-   hoặc sửa cấu hình sẽ hủy ý định tự khôi phục.
+USB của firmware là Serial, **không phải USB keyboard HID**. Cắm board vào máy khác
+không tự biến nó thành bàn phím USB; máy đó cần app hoặc phải ghép Bluetooth HID.
+
+### Bluetooth: phân biệt kết nối app và bàn phím độc lập
+
+- **Nút `Bluetooth (tùy chọn)` trong app:** kết nối app với board qua BLE GATT để
+  nhận nút/gửi cấu hình. Thiết lập lần đầu qua USB để app đọc đúng địa chỉ board;
+  nếu radio đang tắt, app có thể bật qua USB. Chấp nhận yêu cầu ghép đôi Windows
+  nếu xuất hiện. Khi app xử lý macro, vẫn cần lưu, bỏ chế độ kiểm tra và bật macro.
+- **Bàn phím Bluetooth HID không cần app:** lưu các hành động hỗ trợ trên board,
+  giữ nút cuối để bật radio nếu đang tắt, ghép board trong Bluetooth Settings của
+  máy đích rồi ngắt kết nối/thoát app. Board dùng cùng firmware và profile đã lưu,
+  không cần nạp một firmware Bluetooth riêng. Xem phần dùng độc lập bên dưới.
+
+App nhận nút qua USB và BLE thì dùng ID sự kiện để chỉ chạy một lần. Khi mất
+kết nối, app nối lại và chỉ khôi phục macro nếu trước đó đã bật; tạm dừng hoặc
+sửa cấu hình sẽ hủy ý định tự khôi phục.
 
 Giữ **nút cuối** (nút 4 trên macropad, nút 3 trên Ti Clicker) để bật/tắt radio Bluetooth, không reboot.
-Nhấn ngắn nút cuối chạy macro khi thả nút. Bỏ chọn nút `Bluetooth` trên app chỉ ngắt
+Nhấn ngắn nút cuối chạy macro khi thả nút. Bỏ chọn nút `Bluetooth (tùy chọn)` chỉ ngắt
 kết nối của app, không tắt radio hay bàn phím HID của hệ điều hành.
 
 Ví dụ: gán `Mở ứng dụng` với `C:\Program Files\Cockpit Tools\cockpit-tools.exe`.
@@ -205,7 +252,19 @@ Kết nối BLE sử dụng pairing/encryption; việc ghi lệnh thành công k
 
 ## Xử lý lỗi
 
-- `Bluetooth trên board đang tắt`: giữ nút cuối hoặc kết nối USB rồi bật nút Bluetooth.
+| Triệu chứng | Kiểm tra / cách xử lý |
+|---|---|
+| Không thấy COM | Dùng cáp có truyền dữ liệu, đổi cổng USB; bấm `Làm mới` ở cửa sổ chính hoặc `Tìm lại cổng` trong hộp nạp. Với board dùng CP2102/CH340, kiểm tra driver tương ứng. |
+| Có COM nhưng không kết nối được app | COM chỉ cho biết có cổng Serial, không chứng minh đã có firmware tương thích. Đóng app/Serial Monitor đang giữ cổng; nếu board trắng, dùng `Nạp mới / Khôi phục`. |
+| `Nạp và kiểm tra` bị khóa | Phải `Nhận diện chip` thành công trên cổng đang chọn và có gói đúng chip. Đổi hoặc tìm lại cổng phải nhận diện lại. |
+| Không có gói firmware | Giữ thư mục `firmware/` cạnh EXE. Nếu chạy source, build từ gốc repo rồi chọn `dist/firmware` bằng `Thư mục firmware…`. |
+| Không nhận diện được chip | Kiểm tra cáp và cổng đang bị chiếm; thử giữ BOOT khi cắm board theo hướng dẫn phần cứng, rồi nhận diện lại. |
+| Ghi đạt 100% nhưng board chưa trả lời | Chưa được xác nhận nạp thành công. Đợi kiểm tra kết thúc; nếu báo lỗi, rút/cắm lại, tìm COM mới và `Kết nối`. Không xóa flash ngay chỉ vì timeout. |
+| Bấm nút nhưng macro không chạy | Đợi đồng bộ xong, chọn `Tự động`, lưu cấu hình, bỏ `Chỉ kiểm tra nút`, bật macro rồi chuyển focus sang cửa sổ đích. Xem dòng trạng thái phía dưới. |
+| Tắt app thì USB không chạy | Đúng thiết kế: USB cần app. Muốn dùng độc lập phải ghép Bluetooth HID và dùng hành động hỗ trợ trên board. |
+| Nạp mẫu 4 nút nhưng vẫn thấy cấu hình cũ | NVS được giữ nếu không xóa flash. Chỉnh GPIO/số nút trong hộp `Thiết bị`; chỉ xóa flash khi chấp nhận mất toàn bộ cấu hình. |
+
+- `Bluetooth trên board đang tắt`: giữ nút cuối hoặc kết nối USB rồi bật `Bluetooth (tùy chọn)`.
 - Không thấy board khi tìm qua BLE: thiết lập lần đầu qua USB, bật Bluetooth trên
   Windows, kiểm tra board không đang bị máy khác giữ kết nối.
 - Firmware mới có thêm GATT service. Nếu Windows vẫn dùng cache cũ và báo thiếu
@@ -222,13 +281,18 @@ Kết nối BLE sử dụng pairing/encryption; việc ghi lệnh thành công k
 
 ## Kiểm thử
 
-Bản 0.11.0 là bản kiểm thử tích hợp. Tests tự động gồm chống thực thi trùng,
-pause/reconnect, đổi mode, clipboard, giao thức INFO/CFG/DUMP, kiểm tra gói firmware
-và tham số esptool. Firmware build được cho cả 4 env. Đã thử trên ESP32-C3 Super Mini
-(Ti Clicker): nạp đủ bootloader/phân vùng/firmware bằng code của app, INFO, lưu
-profile có `wait:` và đọc lại bằng DUMP, CFG đổi tên/GPIO rồi tự kết nối lại sau
-khoảng 1,2 giây, từ chối GPIO sai/trùng, BLE quảng bá đúng tên. Chưa thử trên board
-ESP32 thường và ESP32-S3.
+Khi chuẩn bị v0.11.1: **192 tests đạt**, Ruff sạch, firmware build và kiểm tra
+SHA-256 cho cả 4 env; EXE đóng gói vượt smoke-test. Tests gồm chống thực thi trùng,
+pause/reconnect, đổi mode, clipboard, INFO/CFG/DUMP, gói firmware và esptool 5,
+bắt buộc nhận diện trước nạp, hủy xác nhận không ghi, nạp đè/nạp mới và timeout
+kiểm tra sau nạp. Đây là kết quả kiểm tra phần mềm, không thay thế thử phần cứng.
+
+Kiểm thử tích hợp phần cứng v0.11.0 trên ESP32-C3 Super Mini (Ti Clicker) đã gồm:
+nạp đủ bootloader/phân vùng/firmware bằng code của app, INFO, lưu profile có `wait:`
+và đọc lại bằng DUMP, CFG đổi tên/GPIO rồi tự kết nối lại, từ chối GPIO sai/trùng,
+BLE quảng bá đúng tên. Trong lượt chuẩn bị release v0.11.1 đã nhận diện ESP32-C3
+qua esptool mới, chưa thực hiện lượt nạp thử phần cứng mới. Chưa thử ESP32 thường
+và ESP32-S3; không coi build thành công là đã kiểm thử các board đó.
 
 Chưa triển khai cửa sổ ghép đôi có thời hạn/allowlist và chưa có ACK xác nhận
 lưu profile vào NVS qua BLE. Không suy ra tốc độ reconnect cố định từ vài lượt đo.
