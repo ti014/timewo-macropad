@@ -131,8 +131,10 @@ void ProfileStore::setStandalone(bool enabled) {
 
 void ProfileStore::setDefaults() {
     static const char* const defaults[] = {"Ctrl+C", "Ctrl+V", "Alt+Tab", "Ctrl+S"};
+    constexpr uint8_t kDefaults = sizeof(defaults) / sizeof(defaults[0]);
     for (uint8_t i = 0; i < kButtonCount; ++i) {
-        copyAction(actions_[i], ActionKind::Hotkey, defaults[i]);
+        if (i < kDefaults) copyAction(actions_[i], ActionKind::Hotkey, defaults[i]);
+        else copyAction(actions_[i], ActionKind::None, "");
     }
     memcpy(staged_, actions_, sizeof(actions_));
 }

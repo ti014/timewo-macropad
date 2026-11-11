@@ -9,13 +9,15 @@ EVENT_UUID = "a9141001-6ed1-4b32-9b4c-cb94de001001"
 COMMAND_UUID = "a9141002-6ed1-4b32-9b4c-cb94de001001"
 STATE_UUID = "a9141003-6ed1-4b32-9b4c-cb94de001001"
 PACKET = Struct("<BBII")
+# Matches firmware kMaxButtons; serial lines carry the number as one digit.
+MAX_BUTTONS = 9
 
 
 class ButtonPress(int):
     """Button index with boot-session and monotonically increasing event ID."""
 
     def __new__(cls, button: int, session: int, sequence: int) -> Self:
-        if button not in range(1, 5) or not 0 <= session <= 0xFFFFFFFF:
+        if button not in range(1, MAX_BUTTONS + 1) or not 0 <= session <= 0xFFFFFFFF:
             raise ValueError("Invalid button event")
         if not 0 <= sequence <= 0xFFFFFFFF:
             raise ValueError("Invalid event sequence")

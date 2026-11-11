@@ -1,12 +1,12 @@
-"""Bounded, incremental decoder for macropad firmware with 1 to 4 buttons."""
+"""Bounded, incremental decoder for macropad firmware with 1 to 9 buttons."""
 
 import re
 
 from .bridge_protocol import ButtonPress
 
-LINE = re.compile(r"BTN([1-4]) GPIO([0-9]+) (PRESSED|RELEASED) count=([0-9]{1,10})")
+LINE = re.compile(r"BTN([1-9]) GPIO([0-9]+) (PRESSED|RELEASED) count=([0-9]{1,10})")
 # Firmware 0.10 printed "ESP32-C3 macropad"; 0.11+ prints "ESP32 macropad" on every chip.
-HEADER = re.compile(r"ESP32(?:-C3)? macropad: ([1-4])-button test ready\.")
+HEADER = re.compile(r"ESP32(?:-C3)? macropad: ([1-9])-button test ready\.")
 # Lines that answer INFO / DUMP / CFG / SYNC; kept for Connection.request().
 REPLY_VERBS = {"DEVICE", "CAPS", "LIMITS", "PINS_OK", "CONFIG", "INFO", "ACT", "DUMP", "CFG", "SYNC"}
 MAX_REPLIES = 64

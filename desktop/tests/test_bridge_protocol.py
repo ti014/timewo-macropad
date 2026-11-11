@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from macropad.bridge_protocol import ButtonPress, EventGate, decode_event, decode_state
+from macropad.bridge_protocol import MAX_BUTTONS, ButtonPress, EventGate, decode_event, decode_state
 from macropad.protocol import Decoder
 
 
@@ -17,7 +17,8 @@ def test_ble_event_and_state_are_bounded_and_versioned() -> None:
         with pytest.raises(ValueError):
             decode_event(packet)
     with pytest.raises(ValueError):
-        decode_event(struct.pack("<BBII", 1, 5, 123, 7))
+        decode_event(struct.pack("<BBII", 1, MAX_BUTTONS + 1, 123, 7))
+    assert decode_event(struct.pack("<BBII", 1, MAX_BUTTONS, 123, 7)) == MAX_BUTTONS
 
 
 def test_usb_and_ble_duplicate_cannot_execute_twice() -> None:

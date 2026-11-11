@@ -9,6 +9,7 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from macropad.bridge_protocol import MAX_BUTTONS
 from macropad.config import Action, load_config
 from macropad.protocol import PINS
 from macropad.ui import MainWindow, MarkedCheckBox
@@ -43,7 +44,9 @@ def test_default_safe_state(window) -> None:
     assert window.preview.isChecked()
     assert not window.arm.isChecked()
     assert not window.arm.isEnabled()
-    assert len(window.cards) == 4
+    # Rows exist for the largest board; only the default 4-button pad shows before connecting.
+    assert len(window.cards) == MAX_BUTTONS
+    assert [card.isVisibleTo(window) for card in window.cards] == [n in PINS for n in range(1, MAX_BUTTONS + 1)]
     window._handle_press(1)
     window._executor.execute.assert_not_called()
 
@@ -131,13 +134,29 @@ def test_checkbox_uses_visible_tick_and_keyboard_toggle(window, app) -> None:
     assert checked != unchecked
 
 
+def test_nine_button_board_shows_nine_separate_rows(window, app) -> None:
+    """A board reporting 9 buttons gets 9 editable rows that do not overlap."""
+    window.resize(760, 440)
+    window.show()
+    window._apply_layout({number: number for number in range(1, MAX_BUTTONS + 1)})
+    app.processEvents()
+    assert all(card.isVisible() for card in window.cards)
+    assert window.assignment_group.title() == f"Gán chức năng cho {MAX_BUTTONS} nút"
+    for current, following in zip(window.cards, window.cards[1:]):
+        assert current.geometry().bottom() < following.geometry().top()
+    window._apply_layout(dict(PINS))
+    app.processEvents()
+    assert [card.isVisible() for card in window.cards] == [n in PINS for n in range(1, MAX_BUTTONS + 1)]
+
+
 def test_small_window_scrolls_instead_of_overlapping_rows(window, app) -> None:
     """Short windows scroll only assignments, while primary actions stay visible."""
     window.resize(760, 440)
     window.show()
     window.log_toggle.setChecked(True)
     app.processEvents()
-    for current, following in zip(window.cards, window.cards[1:]):
+    shown = [card for card in window.cards if card.isVisible()]
+    for current, following in zip(shown, shown[1:]):
         assert current.geometry().bottom() < following.geometry().top()
     buttons = window.quick_keys.key_buttons
     assert buttons["a"].geometry().bottom() < buttons["tab"].geometry().top()
@@ -406,7 +425,7 @@ def test_three_button_board_hides_fourth_row_and_syncs_three(window) -> None:
     window._connection = Mock(connected=True, pins={1: 7, 2: 8, 3: 9})
     window._apply_layout(window._connection.pins)
 
-    assert [card.isVisibleTo(window) for card in window.cards] == [True, True, True, False]
+    assert [card.isVisibleTo(window) for card in window.cards] == [True] * 3 + [False] * (MAX_BUTTONS - 3)
     assert window.cards[2].title.toolTip() == "BTN3 / GPIO9"
     assert window._sync_profile()
     sent = [call.args[0] for call in window._connection.send_command.call_args_list]
@@ -500,7 +519,7 @@ def test_create_and_switch_profile(window) -> None:
 
 def test_unsaved_cancel_keeps_profile(window) -> None:
     """Cancelling a profile switch preserves unsaved text."""
-    window._config.profiles["Other"] = [Action()] * 4
+    window._config.profiles["Other"] = [Action()] * MAX_BUTTONS
     window.profiles.addItem("Other")
     window.cards[0].value.setPlainText("Ctrl+X")
     with patch("macropad.ui.QMessageBox.question", return_value=QMessageBox.StandardButton.Cancel):
@@ -704,7 +723,7 @@ def test_profile_switch_while_unplugged_cancels_resume(window) -> None:
     """Choosing a different profile cannot silently arm it on reconnection."""
     _prepare_reconnect(window)
     _simulate_loss(window)
-    window._config.profiles["Other"] = [Action()] * 4
+    window._config.profiles["Other"] = [Action()] * MAX_BUTTONS
     window.profiles.addItem("Other")
     window.profiles.setCurrentText("Other")
     assert not window._resume_macro

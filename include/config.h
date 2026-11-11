@@ -19,9 +19,9 @@ constexpr char kFirmwareVersion[] = "0.11.1";
 constexpr char kBoardId[] = MACROPAD_BOARD;
 constexpr uint8_t kDefaultPins[] = {MACROPAD_PINS};
 constexpr char kDefaultName[] = MACROPAD_NAME;
-// shortcut: desktop profiles hold exactly 4 actions, raise both together for bigger boards.
-constexpr uint8_t kMaxButtons = 4;
-static_assert(sizeof(kDefaultPins) >= 1 && sizeof(kDefaultPins) <= kMaxButtons, "1 to 4 buttons");
+// Desktop MAX_BUTTONS and its one-digit BTN<n> parsing must match; raise both together.
+constexpr uint8_t kMaxButtons = 9;
+static_assert(sizeof(kDefaultPins) >= 1 && sizeof(kDefaultPins) <= kMaxButtons, "1 to 9 buttons");
 // The hand-built advertising packet has room for exactly 15 name bytes (see ble_bridge.cpp).
 constexpr size_t kMaxNameLength = 15;
 static_assert(sizeof(kDefaultName) - 1 <= kMaxNameLength, "name must fit the advertisement");

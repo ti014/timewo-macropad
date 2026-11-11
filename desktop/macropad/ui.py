@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from .actions import Executor
-from .bridge_protocol import ButtonPress
+from .bridge_protocol import MAX_BUTTONS, ButtonPress
 from .bridge_ui import BridgeUiMixin
 from .config import (
     FIRMWARE_DIRECT_KINDS,
@@ -50,6 +50,7 @@ from .device import DeviceConfig, DeviceInfo, parse_actions, parse_info
 from .device_ui import DeviceDialog
 from .flash_ui import FlashDialog
 from .hotkeys import is_modifier_key, shortcut_from_event
+from .protocol import PINS
 from .transport import Connection, UsbIdentity, available_ports, find_usb_port, identify_usb_device
 
 HINTS = {
@@ -702,8 +703,9 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         header.addSpacing(118)
         table.addLayout(header)
         self.cards = []
-        for index, pin in enumerate((3, 4, 5, 6)):
-            card = ButtonEditor(index + 1, pin)
+        for number in range(1, MAX_BUTTONS + 1):
+            card = ButtonEditor(number, PINS.get(number, 0))
+            card.setVisible(number in PINS)
             card.kind.currentIndexChanged.connect(self._edited)
             card.kind.currentIndexChanged.connect(self._refresh_quick_keys)
             card.value.textChanged.connect(self._edited)
@@ -938,6 +940,7 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             card.setVisible(number in pins)
             if number in pins:
                 card.title.setToolTip(f"BTN{number} / GPIO{pins[number]}")
+        self.assignment_group.setMinimumHeight(self.assignment_group.sizeHint().height())
         if not self.active_card.isVisibleTo(self):
             self._select_card(self.cards[0])
 

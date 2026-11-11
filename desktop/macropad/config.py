@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .bridge_protocol import MAX_BUTTONS
+
 KINDS = {
     "lock_screen": "Khóa màn hình",
     "sequence": "Chu\u1ed7i ph\u00edm",
@@ -198,13 +200,14 @@ class Config:
 
     Attributes:
         active: Selected profile name.
-        profiles: Named lists of exactly four actions.
+        profiles: Named lists of exactly MAX_BUTTONS actions; boards use a prefix.
     """
 
     active: str = "Mặc định"
     profiles: dict[str, list[Action]] = field(
         default_factory=lambda: {
             "Mặc định": [Action("hotkey", key) for key in ("Ctrl+C", "Ctrl+V", "Alt+Tab", "Ctrl+S")]
+            + [Action() for _ in range(MAX_BUTTONS - 4)]
         }
     )
 
@@ -221,8 +224,8 @@ class Config:
         for name, actions in self.profiles.items():
             if not isinstance(name, str) or not name.strip() or len(name) > 60:
                 raise ValueError("Tên profile phải dài từ 1 đến 60 ký tự.")
-            if len(actions) != 4:
-                raise ValueError("Mỗi profile phải có đúng 4 nút.")
+            if len(actions) != MAX_BUTTONS:
+                raise ValueError(f"Mỗi profile phải có đúng {MAX_BUTTONS} nút.")
             for action in actions:
                 action.validate()
 
@@ -249,7 +252,9 @@ def load_config(path: Path) -> Config:
         config = Config(
             raw["active"],
             {
+                # Files saved for 4-button pads gain unassigned slots for bigger boards.
                 name: [Action(**action) for action in actions]
+                + [Action() for _ in range(MAX_BUTTONS - len(actions))]
                 for name, actions in raw["profiles"].items()
             },
         )
