@@ -32,6 +32,9 @@ try {
     $out = Join-Path $PSScriptRoot 'dist\firmware'
     New-Item -ItemType Directory -Force $out | Out-Null
     $utf8 = New-Object System.Text.UTF8Encoding($false)
+    # One ESP Web Tools build per chip family; it picks the one matching the plugged-in chip.
+    # The first env of a family wins (esp32c3 before ti-clicker); pins are set on the page anyway.
+    $webBuilds = [ordered]@{}
 
     foreach ($name in $targets) {
         if (-not $sections.Contains($name)) { throw "Unknown env: $name" }
@@ -77,21 +80,26 @@ try {
             )
         }
         [IO.File]::WriteAllText((Join-Path $dest 'manifest.json'), ($manifest | ConvertTo-Json -Depth 5), $utf8)
-        # Same image in ESP Web Tools format, for the browser flasher in web/index.html.
-        $web = [ordered]@{
-            name                     = "$title ($name)"
-            version                  = $version
-            new_install_prompt_erase = $true
-            # The firmware has no Improv Wi-Fi; skip ESP Web Tools' wait for it after flashing.
-            new_install_improv_wait_time = 0
-            builds                   = @([ordered]@{
-                chipFamily = $chips[$board].family
-                parts      = @($manifest.full | ForEach-Object { [ordered]@{ path = $_.file; offset = [Convert]::ToInt32($_.offset, 16) } })
-            })
+        $family = $chips[$board].family
+        if (-not $webBuilds.Contains($family)) {
+            $webBuilds[$family] = [ordered]@{
+                chipFamily = $family
+                parts      = @($manifest.full | ForEach-Object { [ordered]@{ path = "$name/$($_.file)"; offset = [Convert]::ToInt32($_.offset, 16) } })
+            }
         }
-        [IO.File]::WriteAllText((Join-Path $dest 'web-manifest.json'), ($web | ConvertTo-Json -Depth 5), $utf8)
         Write-Host "Packaged $name ($($chips[$board].chip), v$version) -> $dest"
     }
+
+    # ESP Web Tools manifest for web/index.html, next to the env folders it points into.
+    $web = [ordered]@{
+        name                         = 'timewo-macropad'
+        version                      = $version
+        new_install_prompt_erase     = $true
+        # The firmware has no Improv Wi-Fi; skip ESP Web Tools' wait for it after flashing.
+        new_install_improv_wait_time = 0
+        builds                       = @($webBuilds.Values)
+    }
+    [IO.File]::WriteAllText((Join-Path $out 'web-manifest.json'), ($web | ConvertTo-Json -Depth 6), $utf8)
 } finally {
     Pop-Location
 }
