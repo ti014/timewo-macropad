@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>timewo Macropad</title>
+<meta name="description" content="Nạp firmware và cấu hình macropad ESP32 ngay trên trình duyệt qua USB.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+:root {
+  --bg: #f6f5f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a65; --line: #dedcd4;
+  --accent: #1f6feb; --accent-text: #ffffff; --ok: #1a7f37; --err: #b3261e; --hit: #ffe08a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
+    --accent: #4c8dff; --accent-text: #0d0d0c; --ok: #4ac26b; --err: #ff8a80; --hit: #806a1f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
+  --accent: #4c8dff; --accent-text: #0d0d0c; --ok: #4ac26b; --err: #ff8a80; --hit: #806a1f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; margin-top: 16px; }
+button, select, input { font: inherit; color: inherit; }
+button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
+  padding: 8px 14px; cursor: pointer; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+select, input { background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.grid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: center; }
+.pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.pins label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+th { font-size: 13px; color: var(--muted); font-weight: 600; }
+td input { width: 100%; }
+tr.hit td { background: var(--hit); transition: background .1s; }
+.status { font-weight: 600; }
+.ok { color: var(--ok); } .err { color: var(--err); }
+#log { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px;
+  font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+[hidden] { display: none !important; }
+@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } td:first-child { white-space: nowrap; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>timewo Macropad</h1>
+  <p class="muted">Nạp firmware và cấu hình macropad ESP32 ngay trên trình duyệt. Cần Chrome hoặc Edge trên máy tính và cáp USB truyền dữ liệu.</p>
+
+  <section>
+    <h2>1. Nạp firmware</h2>
+    <p>Chọn loại board, bấm nạp, rồi chọn cổng của board trong hộp thoại trình duyệt.</p>
+    <div class="row">
+      <select id="board" aria-label="Loại board">
+        <option value="esp32c3">ESP32-C3 macropad (1–9 nút)</option>
+        <option value="ti-clicker">ESP32-C3 Super Mini Ti Clicker</option>
+        <option value="esp32s3">ESP32-S3 DevKitC</option>
+        <option value="esp32">ESP32 DevKit (CP2102/CH340)</option>
+      </select>
+      <esp-web-install-button id="installer" manifest="firmware/esp32c3/web-manifest.json">
+        <button slot="activate">Nạp firmware</button>
+        <span slot="unsupported" class="err">Trình duyệt này chưa hỗ trợ Web Serial. Hãy dùng Chrome hoặc Edge trên máy tính.</span>
+        <span slot="not-allowed" class="err">Trang phải mở qua HTTPS.</span>
+      </esp-web-install-button>
+    </div>
+    <p class="muted">Board mới nên chọn xóa thiết bị (erase) khi được hỏi. Nếu không thấy cổng: giữ nút BOOT trên board, cắm lại USB rồi thử lại.</p>
+  </section>
+
+  <section>
+    <h2>2. Kết nối để cấu hình</h2>
+    <p>Đóng ứng dụng desktop và hộp thoại nạp ở trên trước, vì mỗi lúc chỉ một chương trình được mở cổng.</p>
+    <div class="row">
+      <button id="connect">Kết nối board</button>
+      <button id="disconnect" class="secondary" disabled>Ngắt kết nối</button>
+      <span id="status" class="status muted">Chưa kết nối</span>
+    </div>
+    <p id="deviceLine" class="muted"></p>
+  </section>
+
+  <section id="deviceSection" hidden>
+    <h2>3. Tên, số nút và GPIO</h2>
+    <div class="grid">
+      <label for="name">Tên Bluetooth</label><input id="name" maxlength="15">
+      <label for="count">Số nút</label><input id="count" type="number" min="1">
+      <label for="debounce">Debounce (ms)</label><input id="debounce" type="number">
+      <label for="hold">Giữ nút cuối để bật/tắt BLE (ms)</label><input id="hold" type="number" step="100">
+    </div>
+    <p class="muted">Mỗi nút nối từ một GPIO xuống GND.</p>
+    <div id="pins" class="pins"></div>
+    <div class="row">
+      <button id="saveDevice">Lưu vào board</button>
+      <span class="muted">Board sẽ khởi động lại, trang tự kết nối lại.</span>
+    </div>
+  </section>
+
+  <section id="actionSection" hidden>
+    <h2>4. Gán chức năng</h2>
+    <p class="muted">Board tự gõ các chức năng này qua Bluetooth, không cần ứng dụng. Ví dụ phím tắt: <code>Ctrl+C</code>, <code>Win+Shift+S</code>, <code>media_play_pause</code>. Ví dụ chuỗi phím: <code>Ctrl+L,wait:300,Ctrl+C</code>.</p>
+    <table>
+      <thead><tr><th>Nút</th><th>Chức năng</th><th>Giá trị</th></tr></thead>
+      <tbody id="actions"></tbody>
+    </table>
+    <div class="row">
+      <button id="saveActions">Lưu chức năng</button>
+      <label><input type="checkbox" id="testMode"> Kiểm tra nút (board báo nút được bấm, không gõ phím)</label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Nhật ký</h2>
+    <div id="log" role="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<script>
+// Kinds the firmware runs by itself; ids match ActionKind in include/macro_types.h.
+const KINDS = [["none", 0, "Không gán"], ["hotkey", 1, "Phím tắt"], ["sequence", 3, "Chuỗi phím"],
+               ["lock_screen", 4, "Khóa màn hình"], ["close_app", 6, "Đóng ứng dụng đang dùng"]];
+const NEEDS_VALUE = new Set([1, 3]);
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hex = (text) => [...new TextEncoder().encode(text)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+const unhex = (h) => h === "-" ? "" : new TextDecoder().decode(new Uint8Array(h.match(/../g).map((b) => parseInt(b, 16))));
+
+let port = null, reader = null, writer = null, info = null, waiters = [], leaseTimer = null, reconnecting = false;
+
+function log(text, cls) {
+  const line = document.createElement("div");
+  line.textContent = text;
+  if (cls) line.className = cls;
+  $("log").append(line);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+function setStatus(text, cls = "muted") { $("status").textContent = text; $("status").className = "status " + cls; }
+
+$("board").addEventListener("change", (e) =>
+  $("installer").setAttribute("manifest", `firmware/${e.target.value}/web-manifest.json`));
+
+if (!("serial" in navigator)) {
+  $("connect").disabled = true;
+  setStatus("Trình duyệt chưa hỗ trợ Web Serial (dùng Chrome hoặc Edge)", "err");
+}
+
+async function openPort(p) {
+  await p.open({ baudRate: 115200 });
+  // DTR tells the firmware a host is listening; RTS low avoids resetting native-USB chips.
+  await p.setSignals({ dataTerminalReady: true, requestToSend: false });
+  port = p;
+  writer = port.writable.getWriter();
+  readLoop();
+}
+
+async function readLoop() {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  reader = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let index;
+      while ((index = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, index).trim();
+        buffer = buffer.slice(index + 1);
+        if (line) onLine(line);
+      }
+      if (buffer.length > 4096) buffer = "";
+    }
+  } catch (err) {
+    // A restarting board drops the USB device; reconnection is handled by the caller.
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function onLine(line) {
+  for (const waiter of [...waiters]) {
+    waiter.lines.push(line);
+    if (waiter.done(line)) {
+      waiters = waiters.filter((w) => w !== waiter);
+      waiter.resolve(waiter.lines);
+    }
+  }
+  const press = line.match(/^EVT \d+ \d+ (\d)$/);
+  if (press) flash(Number(press[1]));
+}
+
+function flash(number) {
+  const row = $("actions").children[number - 1];
+  if (!row) return;
+  row.classList.add("hit");
+  log(`Nút ${number} được bấm`, "ok");
+  setTimeout(() => row.classList.remove("hit"), 400);
+}
+
+async function send(command) { await writer.write(new TextEncoder().encode(command + "\n")); }
+
+function request(command, isEnd, timeout = 3000) {
+  return new Promise((resolve, reject) => {
+    const waiter = { lines: [], done: isEnd, resolve };
+    waiters.push(waiter);
+    setTimeout(() => {
+      if (waiters.includes(waiter)) {
+        waiters = waiters.filter((w) => w !== waiter);
+        reject(new Error(`Board không trả lời lệnh ${command.split(" ")[0]}`));
+      }
+    }, timeout);
+    send(command).catch(reject);
+  });
+}
+
+function parseInfo(lines) {
+  const get = (verb) => (lines.find((l) => l.startsWith(verb + " ")) || "").split(" ").slice(1);
+  const device = get("DEVICE"), limits = get("LIMITS").map(Number), config = get("CONFIG");
+  if (!device.length || !limits.length || !config.length) throw new Error("Firmware quá cũ, hãy nạp lại ở bước 1.");
+  return {
+    chip: device[1], version: device[2], board: device[3],
+    maxButtons: limits[0], maxValue: limits[1], maxName: limits[2],
+    debounce: [limits[3], limits[4]], hold: [limits[5], limits[6]],
+    usablePins: get("PINS_OK")[0].split(",").map(Number),
+    name: unhex(config[0]), pins: config[1].split(",").map(Number),
+    debounceMs: Number(config[2]), holdMs: Number(config[3]),
+  };
+}
+
+async function loadBoard() {
+  info = parseInfo(await request("INFO", (l) => l === "INFO END"));
+  $("deviceLine").textContent = `${info.name} · ${info.chip} · firmware ${info.version} · ${info.pins.length} nút`;
+  $("name").value = info.name;
+  $("name").maxLength = info.maxName;
+  $("count").max = info.maxButtons;
+  $("count").value = info.pins.length;
+  $("debounce").min = info.debounce[0]; $("debounce").max = info.debounce[1]; $("debounce").value = info.debounceMs;
+  $("hold").min = info.hold[0]; $("hold").max = info.hold[1]; $("hold").value = info.holdMs;
+  renderPins();
+  const dump = await request("DUMP", (l) => l === "DUMP END");
+  const actions = {};
+  for (const line of dump) {
+    const f = line.split(" ");
+    if (f[0] === "ACT" && f.length === 4) actions[Number(f[1])] = [Number(f[2]), unhex(f[3])];
+  }
+  renderActions(actions);
+  $("deviceSection").hidden = false;
+  $("actionSection").hidden = false;
+}
+
+function renderPins() {
+  const count = Math.max(1, Math.min(info.maxButtons, Number($("count").value) || 1));
+  const old = [...$("pins").querySelectorAll("select")].map((s) => Number(s.value));
+  $("pins").replaceChildren();
+  for (let i = 0; i < count; i++) {
+    const label = document.createElement("label");
+    label.textContent = `Nút ${i + 1}`;
+    const select = document.createElement("select");
+    info.usablePins.forEach((pin) => select.add(new Option(`GPIO${pin}`, pin)));
+    select.value = old[i] ?? info.pins[i] ?? info.usablePins[i] ?? info.usablePins[0];
+    label.append(select);
+    $("pins").append(label);
+  }
+}
+$("count").addEventListener("input", () => info && renderPins());
+
+function renderActions(actions) {
+  $("actions").replaceChildren();
+  for (let n = 1; n <= info.pins.length; n++) {
+    const [kind, value] = actions[n] || [0, ""];
+    const tr = document.createElement("tr");
+    const select = document.createElement("select");
+    KINDS.forEach(([, id, label]) => select.add(new Option(label, id)));
+    // Desktop-only kinds (text, app, url, ...) cannot run on the board; show them as unassigned.
+    select.value = KINDS.some(([, id]) => id === kind) ? kind : 0;
+    const input = document.createElement("input");
+    input.value = NEEDS_VALUE.has(Number(select.value)) ? value : "";
+    input.placeholder = "Ctrl+C";
+    const sync = () => { input.disabled = !NEEDS_VALUE.has(Number(select.value)); };
+    select.addEventListener("change", sync);
+    sync();
+    tr.innerHTML = `<td>Nút ${n}<br><span class="muted">GPIO${info.pins[n - 1]}</span></td>`;
+    [select, input].forEach((el) => { const td = document.createElement("td"); td.append(el); tr.append(td); });
+    $("actions").append(tr);
+  }
+}
+
+function validValue(kind, value) {
+  if (!NEEDS_VALUE.has(kind)) return null;
+  if (!value.trim()) return "chưa nhập giá trị";
+  if (new TextEncoder().encode(value).length > info.maxValue) return "giá trị quá dài";
+  const steps = (kind === 3 ? value.split(",") : [value]).map((s) => s.trim());
+  if (steps.some((s) => !s || s.split("+").some((k) => !k.trim()))) return "có phím trống, ví dụ Ctrl++ hoặc dấu phẩy thừa";
+  const wait = steps.filter((s) => /^wait:/i.test(s));
+  if (wait.some((s) => !/^wait:\d+$/i.test(s))) return "bước chờ phải có dạng wait:300";
+  return null;
+}
+
+$("saveActions").addEventListener("click", () => busy($("saveActions"), async () => {
+  const rows = [...$("actions").children];
+  const wanted = rows.map((tr) => {
+    const [select, input] = tr.querySelectorAll("select, input");
+    const kind = Number(select.value);
+    return [kind, NEEDS_VALUE.has(kind) ? input.value.trim() : ""];
+  });
+  wanted.forEach(([kind, value], i) => {
+    const error = validValue(kind, value);
+    if (error) throw new Error(`Nút ${i + 1}: ${error}.`);
+  });
+  for (const [i, [kind, value]] of wanted.entries()) {
+    const reply = await request(`SYNC ${i + 1} ${kind} ${value ? hex(value) : "-"}`, (l) => l.startsWith("SYNC ACTION"));
+    if (!reply.at(-1).endsWith("OK")) throw new Error(`Board từ chối chức năng của nút ${i + 1}.`);
+  }
+  await request("SYNC_COMMIT", (l) => l === "SYNC COMMIT OK");
+  const dump = await request("DUMP", (l) => l === "DUMP END");
+  for (const [i, [kind, value]] of wanted.entries()) {
+    const expected = `ACT ${i + 1} ${kind} ${value ? hex(value) : "-"}`;
+    if (!dump.includes(expected)) throw new Error(`Nút ${i + 1} đọc lại không khớp, hãy lưu lại.`);
+  }
+  log("Đã lưu và đọc lại khớp toàn bộ chức năng.", "ok");
+}));
+
+$("saveDevice").addEventListener("click", () => busy($("saveDevice"), async () => {
+  const name = $("name").value.trim();
+  const pins = [...$("pins").querySelectorAll("select")].map((s) => Number(s.value));
+  const debounce = Number($("debounce").value), hold = Number($("hold").value);
+  if (!name || new TextEncoder().encode(name).length > info.maxName || /[\x00-\x1f\x7f]/.test(name))
+    throw new Error(`Tên phải dài 1 đến ${info.maxName} byte.`);
+  if (new Set(pins).size !== pins.length) throw new Error("Hai nút đang dùng cùng một GPIO.");
+  if (!(debounce >= info.debounce[0] && debounce <= info.debounce[1])) throw new Error("Debounce ngoài phạm vi cho phép.");
+  if (!(hold >= info.hold[0] && hold <= info.hold[1])) throw new Error("Thời gian giữ ngoài phạm vi cho phép.");
+  const replies = await request(`CFG ${hex(name)} ${pins.join(",")} ${debounce} ${hold}`, (l) => l.startsWith("CFG "));
+  if (replies.at(-1).startsWith("CFG ERROR")) throw new Error(`Board từ chối cấu hình (${replies.at(-1).split(" ").pop()}).`);
+  log("Board đã lưu cấu hình và đang khởi động lại…", "ok");
+  await reconnect();
+}));
+
+async function busy(button, task) {
+  button.disabled = true;
+  try { await task(); } catch (err) { log(err.message, "err"); } finally { button.disabled = false; }
+}
+
+async function closePort() {
+  clearInterval(leaseTimer); leaseTimer = null;
+  waiters = [];
+  try { await reader?.cancel(); } catch {}
+  try { writer?.releaseLock(); } catch {}
+  try { await port?.close(); } catch {}
+  port = reader = writer = null;
+}
+
+async function reconnect() {
+  reconnecting = true;
+  const known = port;
+  await closePort();
+  setStatus("Đang chờ board khởi động lại…");
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await sleep(700);
+    // A granted port can be reopened without a click; native USB may come back as a new object.
+    const ports = await navigator.serial.getPorts();
+    for (const p of [known, ...ports.filter((p) => p !== known)]) {
+      try { await openPort(p); await sleep(800); await loadBoard(); connected(); reconnecting = false; return; }
+      catch { await closePort(); }
+    }
+  }
+  reconnecting = false;
+  disconnected();
+  log("Chưa tự kết nối lại được. Hãy bấm Kết nối board.", "err");
+}
+
+function connected() {
+  setStatus("Đã kết nối", "ok");
+  $("connect").disabled = true;
+  $("disconnect").disabled = false;
+  $("testMode").checked = false;
+}
+function disconnected() {
+  setStatus("Chưa kết nối");
+  $("connect").disabled = !("serial" in navigator);
+  $("disconnect").disabled = true;
+  $("deviceSection").hidden = $("actionSection").hidden = true;
+  $("testMode").checked = false;
+}
+
+$("connect").addEventListener("click", () => busy($("connect"), async () => {
+  const p = await navigator.serial.requestPort({ filters: [
+    { usbVendorId: 0x303a }, { usbVendorId: 0x10c4 }, { usbVendorId: 0x1a86 }, { usbVendorId: 0x0403 } ] });
+  setStatus("Đang kết nối…");
+  try {
+    await openPort(p);
+    await sleep(800);
+    await loadBoard();
+    connected();
+    log("Đã đọc cấu hình từ board.", "ok");
+  } catch (err) {
+    await closePort();
+    disconnected();
+    throw err;
+  }
+}));
+
+$("disconnect").addEventListener("click", async () => { await stopTest(); await closePort(); disconnected(); });
+
+// With an app lease the firmware reports presses (EVT) instead of typing them itself.
+$("testMode").addEventListener("change", async (e) => {
+  if (!writer) return;
+  if (e.target.checked) {
+    await send("APP");
+    leaseTimer = setInterval(() => send("APP").catch(() => {}), 1000);
+    log("Đang kiểm tra nút: hãy bấm thử từng nút.");
+  } else {
+    await stopTest();
+  }
+});
+async function stopTest() {
+  if (!leaseTimer) return;
+  clearInterval(leaseTimer); leaseTimer = null;
+  try { await send("APP OFF"); } catch {}
+  log("Đã tắt kiểm tra nút, board lại tự gõ phím.");
+}
+
+navigator.serial?.addEventListener("disconnect", (e) => {
+  if (e.target === port && !reconnecting) { closePort(); disconnected(); log("Board đã bị rút ra.", "err"); }
+});
+</script>
+</body>
+</html>
