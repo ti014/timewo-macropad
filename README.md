@@ -17,7 +17,7 @@ không cần cài Python. Link trên trỏ tới release đã công khai, không
 Hướng dẫn và ảnh cửa sổ chính/hộp nạp bên dưới dùng giao diện **v0.11.1**;
 nếu bản tải về còn là v0.11.0, giao diện sẽ khác.
 
-![Giao diện v0.11.1: profile mặc định 4 nút, chưa kết nối, macro chưa bật](docs/images/main-window.png)
+![Giao diện v0.11.1: profile mặc định 4 nút, chưa kết nối, macro chưa bật](docs/images/main-window.png?v=0.11.1)
 
 ## Bắt đầu nhanh
 
@@ -90,7 +90,7 @@ uv run python main.py           # chạy từ source
 Mở `Nạp firmware…` trên cửa sổ chính (hoặc mục nạp firmware trong `Tùy chọn`).
 Cắm USB hay bấm kết nối **không tự nạp firmware**.
 
-![Hộp nạp v0.11.1: chọn Nạp mới / Khôi phục, chưa nhận diện chip, chưa ghi flash](docs/images/flash-dialog.png)
+![Hộp nạp v0.11.1: chọn Nạp mới / Khôi phục, chưa nhận diện chip, chưa ghi flash](docs/images/flash-dialog.png?v=0.11.1)
 
 Ảnh minh họa trạng thái trước nhận diện; mẫu board đang hiện chưa phải kết quả
 nhận diện phần cứng. Sau nhận diện, chọn đúng mẫu và GPIO, không chỉ đúng chip.
