@@ -55,7 +55,10 @@ void BridgeKeyboard::start(const char* name, bool enabled, bool forgetBonds) {
     // host ask for a passkey, which neither Windows' prompt nor bleak can supply.
     securityParam<esp_ble_io_cap_t>(ESP_BLE_SM_IOCAP_MODE, ESP_IO_CAP_NONE);
     securityParam<uint8_t>(ESP_BLE_SM_SET_INIT_KEY, ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-    securityParam<uint8_t>(ESP_BLE_SM_SET_RSP_KEY, ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    // Never hand out our IRK: it survives the address change of "pair new host", and
+    // Windows rejects a new pairing whose IRK an old one already holds (BTHUSB event 35).
+    // The board uses its public address, so hosts do not need the IRK to recognise it.
+    securityParam<uint8_t>(ESP_BLE_SM_SET_RSP_KEY, ESP_BLE_ENC_KEY_MASK);
 
     // Hand-built payloads: the generated one put both UUIDs as 128-bit and
     // overflowed the 31-byte limit, so the stack silently dropped fields.
