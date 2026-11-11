@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from macropad.bridge_protocol import MAX_BUTTONS
 from macropad.config import (
     FIRMWARE_DIRECT_KINDS,
     Action,
@@ -21,7 +22,7 @@ def test_config_roundtrip(tmp_path: Path) -> None:
     """Persist Unicode and isolated profiles without altering defaults."""
     path = tmp_path / "settings.json"
     config = Config()
-    config.profiles["Tiếng Việt"] = [Action("text", "Xin chào")] * 4
+    config.profiles["Tiếng Việt"] = [Action("text", "Xin chào")] * MAX_BUTTONS
     config.active = "Tiếng Việt"
     save_config(path, config)
     assert load_config(path) == config
@@ -128,11 +129,31 @@ def test_decoder_bounded_buffer() -> None:
 
 
 def test_config_wrong_profile_size(tmp_path: Path) -> None:
-    """A profile must map exactly four physical buttons."""
+    """A profile cannot map more buttons than any board has."""
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({"version": 1, "active": "X", "profiles": {"X": []}}))
+    too_many = [{"kind": "none", "value": ""}] * (MAX_BUTTONS + 1)
+    path.write_text(json.dumps({"version": 1, "active": "X", "profiles": {"X": too_many}}))
     with pytest.raises(ValueError):
         load_config(path)
+
+
+def test_four_button_config_gains_empty_slots(tmp_path: Path) -> None:
+    """Settings saved by the 4-button app still load and keep their assignments."""
+    path = tmp_path / "config.json"
+    old = [{"kind": "hotkey", "value": "Ctrl+C"}] * 4
+    path.write_text(json.dumps({"version": 1, "active": "X", "profiles": {"X": old}}))
+    actions = load_config(path).profiles["X"]
+    assert actions[:4] == [Action("hotkey", "Ctrl+C")] * 4
+    assert actions[4:] == [Action()] * (MAX_BUTTONS - 4)
+
+
+def test_decoder_accepts_nine_buttons() -> None:
+    """A 9-button board reports BTN9 like any other button."""
+    decoder = Decoder()
+    decoder.feed(b"ESP32 macropad: 9-button test ready.\n")
+    decoder.feed(b"".join(b"BTN%d GPIO%d RELEASED count=0\n" % (n, n) for n in range(1, 10)))
+    assert decoder.pins[9] == 9
+    assert decoder.feed(b"BTN9 GPIO9 PRESSED count=1\n") == [9]
 
 
 def test_partial_press_before_arming_is_discarded() -> None:

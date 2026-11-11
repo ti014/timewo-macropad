@@ -7,6 +7,7 @@ import pytest
 from pynput.keyboard import Key
 
 from macropad.actions import Executor
+from macropad.bridge_protocol import MAX_BUTTONS
 from macropad.config import Action, Config, load_config, save_config
 from macropad.transport import Connection, available_ports
 
@@ -215,8 +216,8 @@ def test_atomic_save_failure_preserves_previous_file(tmp_path: Path) -> None:
     [
         Config(active="missing"),
         Config(profiles={}),
-        Config(active="", profiles={"": [Action()] * 4}),
-        Config(active="x" * 61, profiles={"x" * 61: [Action()] * 4}),
+        Config(active="", profiles={"": [Action()] * MAX_BUTTONS}),
+        Config(active="x" * 61, profiles={"x" * 61: [Action()] * MAX_BUTTONS}),
     ],
 )
 def test_invalid_profiles(config: Config) -> None:
@@ -248,4 +249,4 @@ def test_excessive_backlog_fails_closed() -> None:
 def test_profile_limit() -> None:
     """Bound profile count to keep configuration manageable."""
     with pytest.raises(ValueError):
-        Config(active="0", profiles={str(i): [Action()] * 4 for i in range(51)}).validate()
+        Config(active="0", profiles={str(i): [Action()] * MAX_BUTTONS for i in range(51)}).validate()
