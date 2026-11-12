@@ -59,7 +59,7 @@ function validateAction(kind, value, maxValue = 512) {
 function parseInfo(lines) {
   const get = (verb) => (lines.find((line) => line.startsWith(verb + " ")) || "").split(/\s+/).slice(1);
   const device = get("DEVICE"), limits = get("LIMITS").map(Number), cfg = get("CONFIG"), rawPins = get("PINS_OK");
-  if (device.length !== 4 || device[0] !== "1" || limits.length !== 7 || cfg.length !== 4 || rawPins.length !== 1) throw new Error("Thiếu thông tin firmware. Nạp firmware macropad tương thích.");
+  if (device.length !== 4 || device[0] !== "1" || limits.length !== 7 || cfg.length !== 4 || rawPins.length !== 1) throw new Error("Phản hồi INFO thiếu trường hoặc phiên bản giao thức chưa được hỗ trợ.");
   const usablePins = rawPins[0].split(",").map(Number), pins = cfg[1].split(",").map(Number);
   if (!limits.every(Number.isInteger) || limits[0] < 1 || limits[0] > 9 || limits[1] < 1 || limits[1] > 512 || limits[2] < 1 || limits[2] > 64 || limits[3] < 1 || limits[4] < limits[3] || limits[5] < 1 || limits[6] < limits[5]) throw new Error("Giới hạn firmware không hợp lệ.");
   if (!usablePins.length || !usablePins.every((n) => Number.isInteger(n) && n >= 0 && n < 64) || !pins.length || pins.length > limits[0] || new Set(pins).size !== pins.length || pins.some((pin) => !usablePins.includes(pin))) throw new Error("Danh sách GPIO từ board không hợp lệ.");
@@ -93,6 +93,44 @@ const HELP = {
   test: ["Kiểm tra tín hiệu nút", "Trang chỉ hiển thị lần nhấn và nhả. Không giả lập phím Windows. Để thử Alt+Tab thực tế, hoàn tất rồi chuyển sang cửa sổ đích."],
   done: ["Dùng không cần mở web", "Phím tắt, chuỗi phím và giữ phím chạy qua Bluetooth HID. USB ở đây là cổng cấu hình, không phải USB keyboard HID."]
 };
+const CHECKS = [["browser", "Trình duyệt"], ["select", "Chọn cổng"], ["open", "Mở USB"], ["firmware", "Phản hồi firmware"], ["config", "Đọc cấu hình"]];
+let diagnostics = [], diagnosticStart = 0, receivedBytes = 0, receivedLines = 0;
+function resetDiagnostics() {
+  diagnosticStart = performance.now(); receivedBytes = receivedLines = 0;
+  diagnostics = CHECKS.map(([id, label]) => ({id, label, state: "pending", detail: "Chưa kiểm tra", ms: 0}));
+  $("connectionChecks").replaceChildren(...diagnostics.map(({id}) => {
+    const row = document.createElement("li"); row.id = `check-${id}`; return row;
+  }));
+  $("connectionAdvice").textContent = "Chỉ đọc thông tin khi kết nối. Không tự nạp hoặc đổi cấu hình.";
+  for (const check of diagnostics) setCheck(check.id, check.state, check.detail);
+}
+function setCheck(id, state, detail) {
+  const check = diagnostics.find((item) => item.id === id); if (!check) return;
+  Object.assign(check, {state, detail, ms: Math.round(performance.now() - diagnosticStart)});
+  const row = $(`check-${id}`); row.dataset.state = state;
+  row.textContent = `${check.label}: ${detail}`;
+}
+function browserProblem() {
+  if (!window.isSecureContext) return "Trang không có kết nối bảo mật. Mở bằng HTTPS hoặc localhost.";
+  if (!("serial" in navigator)) return "Trình duyệt không có Web Serial. Mở bằng Chrome hoặc Edge trên máy tính.";
+  const policy = document.permissionsPolicy || document.featurePolicy;
+  if (policy && !policy.allowsFeature("serial")) return "Quyền Serial bị chính sách trang hoặc khung nhúng chặn. Mở trang trực tiếp trong tab mới.";
+  return "";
+}
+function errorDetail(error) { return `${error.name || "Error"}: ${error.message || "Không có mô tả"}`; }
+$("copyDiagnostics").addEventListener("click", async () => {
+  const report = ["Chẩn đoán Web Serial", `Bảo mật: ${window.isSecureContext}; Web Serial: ${"serial" in navigator}`,
+    ...diagnostics.map(({label, state, detail, ms}) => `${ms} ms · ${label} · ${state} · ${detail}`),
+    `Nhận: ${receivedBytes} byte; ${receivedLines} dòng`, $("connectionAdvice").textContent].join("\n");
+  try { await navigator.clipboard.writeText(report); say("Đã sao chép báo cáo; không chứa action, tên board hoặc địa chỉ Bluetooth.", "ok"); }
+  catch {
+    const field = document.createElement("textarea"); field.value = report; field.readOnly = true;
+    $("diagnostics").append(field); field.focus(); field.select();
+    say("Không truy cập được clipboard. Báo cáo đã được chọn; nhấn Ctrl+C để sao chép.");
+    field.addEventListener("blur", () => field.remove(), {once: true});
+  }
+});
+$("manualFirmware").addEventListener("click", () => go("firmware"));
 function log(text) { const el = $("log"); el.textContent = (el.textContent + text + "\n").slice(-16000); el.scrollTop = el.scrollHeight; }
 function say(text, cls = "") { $("message").textContent = text; $("message").className = cls; if (text) log(text); }
 function isDirty() { return info && JSON.stringify(draft) !== JSON.stringify(info.actions); }
@@ -140,12 +178,17 @@ async function go(name, focus = true) {
 }
 async function busy(button, task) {
   if (operation) return;
-  operation = true; $("main").inert = true; const old = button.textContent; button.disabled = true;
+  operation = true; const old = button.textContent, focused = document.activeElement;
+  $("main").inert = true; $("main").setAttribute("aria-busy", "true");
+  button.textContent = "Đang xử lý…"; button.setAttribute("aria-busy", "true"); button.disabled = true;
   for (const nav of $("stepper").querySelectorAll("button")) nav.disabled = true;
   $("disconnect").disabled = true;
   try { await task(); } catch (error) { say(error.message, "err"); }
   finally {
-    operation = false; $("main").inert = false; button.textContent = old; button.disabled = false;
+    operation = false; $("main").inert = false; $("main").removeAttribute("aria-busy");
+    button.textContent = old; button.removeAttribute("aria-busy"); button.disabled = false;
+    if (focused && !focused.closest("[hidden]")) focused.focus({preventScroll: true});
+    else $("title-" + current).focus({preventScroll: true});
     for (const nav of $("stepper").querySelectorAll("button")) nav.disabled = !visited.has(nav.dataset.step) && !completed.has(nav.dataset.step);
     updateDevice();
   }
@@ -173,6 +216,7 @@ async function readLoop(p) {
   try {
     for (;;) {
       const {value, done} = await localReader.read(); if (done) break;
+      receivedBytes += value.byteLength;
       buffer += decoder.decode(value, {stream: true});
       let index;
       while ((index = buffer.indexOf("\n")) >= 0) {
@@ -198,11 +242,12 @@ function request(command, isEnd, timeout = 2500) {
   return new Promise((resolve, reject) => {
     const waiter = {lines: [], isEnd, resolve, reject, timer: null};
     function fail(error) { clearTimeout(waiter.timer); waiters = waiters.filter((w) => w !== waiter); reject(error); }
-    waiter.timer = setTimeout(() => fail(new Error(`Board không trả lời ${command.split(" ")[0]}. Kiểm tra cáp USB.`)), timeout);
+    waiter.timer = setTimeout(() => fail(new Error(`Chưa nhận đủ phản hồi ${command.split(" ")[0]} sau ${timeout} ms.`)), timeout);
     waiters.push(waiter); send(command).catch(fail);
   });
 }
 function onLine(line) {
+  receivedLines++;
   if (line.length > 1400) return;
   for (const waiter of [...waiters]) {
     waiter.lines.push(line);
@@ -260,7 +305,7 @@ async function closePort(release = true) {
 }
 async function connectionLost() {
   if (closing || reconnecting) return;
-  const restoreWarning = modeBeforeTest !== null ? " Chưa khôi phục được chế độ tự gõ trước đó; kết nối đúng board rồi đặt lại bằng EXE." : "";
+  const restoreWarning = modeBeforeTest !== null ? " Chưa khôi phục được chế độ trước đó; kết nối lại đúng board để kiểm tra chế độ trước khi dùng." : "";
   modeBeforeTest = null;
   await closePort(false); operation = false;
   say("Mất kết nối USB. Board có thể trở lại tự gõ phím sau 3 giây. Cắm lại rồi kết nối đúng board." + restoreWarning, "err");
@@ -282,38 +327,69 @@ async function reopen(preferred, attempts = 12) {
 async function readActions() { return parseActions(await request("DUMP", (line) => line === "DUMP END"), info.maxButtons); }
 async function loadBoard() {
   const previous = info;
-  info = parseInfo(await request("INFO", (line) => line === "INFO END"));
+  setCheck("firmware", "waiting", "Đã gửi INFO, đang chờ phản hồi…");
+  let lines;
+  try { lines = await request("INFO", (line) => line === "INFO END", 4000); }
+  catch (error) {
+    setCheck("firmware", "error", `${receivedBytes ? "Có dữ liệu nhưng chưa nhận đủ INFO END" : "USB mở được nhưng chưa nhận dữ liệu"}. ${errorDetail(error)}`);
+    throw error;
+  }
+  setCheck("firmware", "ok", "Đã nhận trọn phản hồi INFO.");
+  setCheck("config", "waiting", "Kiểm tra giới hạn, GPIO và action…");
+  info = parseInfo(lines);
   if (previous && reconnecting && previous.chip !== info.chip) throw new Error("Board kết nối lại khác chip. Chọn lại đúng board.");
   await request("?", (line) => /^BTN\d+ GPIO\d+ (?:PRESSED|RELEASED) count=\d+$/.test(line) && Number(line.match(/^BTN(\d+)/)[1]) === info.pins.length);
   await renewLease(); startLease();
   info.actions = await readActions(); draft = cloneActions(info.actions);
   fillPins(); selected = 1; renderPad(); renderEditor(); updateDevice();
+  setCheck("config", "ok", "Đã đọc và kiểm tra cấu hình, không ghi thay đổi.");
 }
 async function connectBoard() {
+  if (operation) return;
   if (isDirty() && !window.confirm("Có thay đổi chưa lưu. Kết nối board khác sẽ bỏ các thay đổi này. Tiếp tục?")) return;
+  resetDiagnostics();
+  const problem = browserProblem();
+  setCheck("browser", problem ? "error" : "ok", problem || "Web Serial khả dụng, trang có quyền truy cập.");
+  if (problem) { $("connectionAdvice").textContent = problem; say(problem, "err"); return; }
+  setCheck("select", "waiting", "Chọn đúng board trong danh sách tất cả cổng.");
   let p;
-  try { p = await navigator.serial.requestPort({filters: [{usbVendorId: 0x303a}, {usbVendorId: 0x10c4}, {usbVendorId: 0x1a86}, {usbVendorId: 0x0403}]}); }
-  catch { say("Chưa chọn board. Bấm Kết nối board USB để chọn lại."); return; }
+  try { p = await navigator.serial.requestPort(); }
+  catch (error) {
+    const cancelled = error.name === "NotFoundError";
+    setCheck("select", cancelled ? "pending" : "error", cancelled ? "Chưa chọn cổng; không phải lỗi firmware." : errorDetail(error));
+    $("connectionAdvice").textContent = cancelled ? "Không thấy board? Rút/cắm board rồi mở lại danh sách, tìm cổng vừa xuất hiện." : "Mở trang trực tiếp trong Chrome/Edge và kiểm tra quyền Serial của trang.";
+    say(cancelled ? "Chưa chọn board. Bạn có thể mở lại danh sách cổng." : errorDetail(error), cancelled ? "" : "err"); return;
+  }
+  setCheck("select", "ok", "Đã chọn cổng USB.");
   await busy($("connect"), async () => {
-    demo = false; $("demoBanner").hidden = true; await closePort(); info = null; completed.clear(); visited.clear(); visited.add("connect");
+    await stopTest(); demo = false; $("demoBanner").hidden = true; await closePort();
+    info = null; bleEnabled = null; completed.clear(); visited.clear(); visited.add("connect");
     say("Đang đọc cấu hình từ board…");
-    try { await openPort(p); await sleep(500); }
-    catch { throw new Error("Không mở được cổng USB. Đóng EXE, Serial Monitor và tab đang giữ board rồi thử lại."); }
+    setCheck("open", "waiting", "Đang mở cổng ở 115200 baud…");
+    try { await openPort(p); setCheck("open", "ok", "Đã mở USB ở 115200 baud."); await sleep(500); }
+    catch (error) {
+      setCheck("open", "error", errorDetail(error));
+      $("connectionAdvice").textContent = "Chưa xác định cổng bị chiếm hay lỗi hệ thống. Đóng tab/ứng dụng đang dùng cổng rồi thử lại; không cần nạp firmware ở chặng này.";
+      throw new Error(`Mở USB thất bại. ${errorDetail(error)}`);
+    }
     try { await loadBoard(); }
     catch (error) {
+      const config = diagnostics.find((item) => item.id === "config");
+      if (config.state === "waiting") setCheck("config", "error", errorDetail(error));
       installerPort = p; await closePort(); info = null; updateDevice();
-      say(`Chưa đọc được firmware: ${error.message}`, "err");
-      complete("connect"); await advance("firmware"); return;
+      $("connectionAdvice").textContent = "Chưa đủ bằng chứng firmware sai. Kiểm tra đúng cổng; nếu vừa cấp nguồn, chờ board khởi động rồi thử lại. Chỉ mở bước nạp khi biết board mới hoặc cần cập nhật.";
+      say(`Dừng ở bước đọc board: ${error.message}`, "err"); return;
     }
+    $("connectionAdvice").textContent = "Kết nối hoàn tất; firmware và cấu hình đã phản hồi hợp lệ.";
     installerPort = p; complete("connect"); say(`Đã đọc cấu hình ${info.name}. Chưa ghi thay đổi nào.`, "ok"); await advance("firmware");
   });
 }
 $("connect").addEventListener("click", connectBoard);
 function renderFirmware() {
-  $("firmwareReason").textContent = info ? `Board đang chạy ${info.version}. ${latestVersion && latestVersion !== info.version ? `Gói phát hành hiện có: ${latestVersion}.` : "Bạn có thể tiếp tục dùng cấu hình hiện tại."}` : "Board chưa trả lời đầy đủ. Cần nạp firmware macropad hoặc kết nối lại đúng cổng.";
+  $("firmwareReason").textContent = info ? `Board đang chạy ${info.version}. ${latestVersion && latestVersion !== info.version ? `Gói phát hành hiện có: ${latestVersion}.` : "Bạn có thể tiếp tục dùng cấu hình hiện tại."}` : "Chỉ nạp khi board mới hoặc bạn đã xác định cần cập nhật. Không nhận phản hồi USB chưa chứng minh firmware bị lỗi.";
   $("firmwareStatus").textContent = info ? `Đã nhận ${info.pins.length} nút${info.caps.has("hold_key") ? ", có hỗ trợ Giữ phím" : "; muốn dùng Giữ phím cần cập nhật firmware hỗ trợ"}.` : "Chưa xác nhận được firmware tương thích.";
   $("skipFirmware").hidden = !info; $("showInstaller").disabled = demo;
-  $("installer").hidden = !!info;
+  $("installer").hidden = true;
 }
 $("showInstaller").addEventListener("click", () => { $("installer").hidden = !$("installer").hidden; });
 $("skipFirmware").addEventListener("click", async () => {
@@ -393,14 +469,21 @@ $("savePins").addEventListener("click", () => busy($("savePins"), async () => {
 
 // Action editor: draft values never write themselves to hardware.
 function renderPad() {
-  $("pad").replaceChildren();
+  if ($("pad").children.length !== info.pins.length) {
+    $("pad").replaceChildren();
+    for (let n = 1; n <= info.pins.length; n++) {
+      const button = document.createElement("button"); button.id = `pad-${n}`; button.className = "pad-key";
+      for (const cls of ["key-top", "key-value", "key-kind"]) { const span = document.createElement("span"); span.className = cls; button.append(span); }
+      button.addEventListener("click", () => { selected = n; cancelRecording(); modifiers.clear(); renderPad(); renderEditor(); });
+      $("pad").append(button);
+    }
+  }
   for (let n = 1; n <= info.pins.length; n++) {
-    const [kind, value] = draft[n] || [0, ""], button = document.createElement("button");
-    button.id = `pad-${n}`; button.className = "pad-key"; button.setAttribute("aria-pressed", String(selected === n)); button.setAttribute("aria-label", `Nút ${n}, ${kindName(kind)}, ${value || "không có giá trị"}`);
-    const top = document.createElement("span"); top.className = "key-top"; top.textContent = `Nút ${n} · GPIO ${info.pins[n - 1]}`;
-    const main = document.createElement("span"); main.className = "key-value"; main.textContent = value || kindName(kind); main.title = value || kindName(kind);
-    const bottom = document.createElement("span"); bottom.className = "key-kind"; bottom.textContent = kindName(kind);
-    button.append(top, main, bottom); button.addEventListener("click", () => { selected = n; cancelRecording(); modifiers.clear(); renderPad(); renderEditor(); }); $("pad").append(button);
+    const [kind, value] = draft[n] || [0, ""], button = $(`pad-${n}`);
+    button.setAttribute("aria-pressed", String(selected === n)); button.setAttribute("aria-label", `Nút ${n}, ${kindName(kind)}, ${value || "không có giá trị"}`);
+    button.children[0].textContent = `Nút ${n} · GPIO ${info.pins[n - 1]}`;
+    button.children[1].textContent = button.children[1].title = value || kindName(kind);
+    button.children[2].textContent = kindName(kind);
   }
   updateDevice();
 }
@@ -513,19 +596,23 @@ $("saveActions").addEventListener("click", () => busy($("saveActions"), async ()
     if (kind === 10 && !info.caps.has("hold_key")) throw new Error(`Nút ${n}: firmware chưa hỗ trợ Giữ phím.`);
   }
   if (!demo) {
-    say("Đang lưu và đọc lại từng action…");
+    say(isDirty() ? "Đang lưu và đọc lại từng action…" : "Không có thay đổi. Đang xác nhận lại cấu hình board…");
     await renewLease();
     const before = await readActions();
     if (JSON.stringify(before) !== JSON.stringify(info.actions)) throw new Error("Cấu hình board đã đổi ngoài trang này. Kết nối lại và đọc cấu hình trước khi lưu.");
-    // Stage full snapshot, including hidden/desktop entries, to replace abandoned staging.
-    for (let n = 1; n <= info.maxButtons; n++) {
-      const [kind, value] = draft[n];
-      const replies = await request(`SYNC ${n} ${kind} ${value ? hex(value) : "-"}`, (line) => line.startsWith("SYNC ACTION"));
-      if (!replies.at(-1).endsWith("OK")) throw new Error(`Board từ chối nút ${n}. Chưa xác nhận lưu.`);
+    const changed = isDirty();
+    if (changed) {
+      // Stage full snapshot, including hidden/desktop entries, to replace abandoned staging.
+      for (let n = 1; n <= info.maxButtons; n++) {
+        $("saveActions").textContent = `Đang lưu nút ${n}/${info.maxButtons}…`;
+        const [kind, value] = draft[n];
+        const replies = await request(`SYNC ${n} ${kind} ${value ? hex(value) : "-"}`, (line) => line.startsWith("SYNC ACTION"));
+        if (!replies.at(-1).endsWith("OK")) throw new Error(`Board từ chối nút ${n}. Chưa xác nhận lưu.`);
+      }
+      const reply = await request("SYNC_COMMIT", (line) => line.startsWith("SYNC COMMIT"));
+      if (reply.at(-1) !== "SYNC COMMIT OK") throw new Error("Board chưa xác nhận ghi cấu hình.");
     }
-    const reply = await request("SYNC_COMMIT", (line) => line.startsWith("SYNC COMMIT"));
-    if (reply.at(-1) !== "SYNC COMMIT OK") throw new Error("Board chưa xác nhận ghi cấu hình.");
-    const actual = await readActions();
+    const actual = changed ? await readActions() : before;
     for (let n = 1; n <= info.maxButtons; n++) if (JSON.stringify(actual[n]) !== JSON.stringify(draft[n])) throw new Error(`Nút ${n} đọc lại không khớp. Chưa thể xác nhận đã lưu.`);
     info.actions = actual;
   } else info.actions = cloneActions(draft);
@@ -629,6 +716,9 @@ $("theme").addEventListener("change", () => { const theme = $("theme").value; if
 try { const theme = localStorage.getItem("macropad-theme"); if (["light", "dark"].includes(theme)) { $("theme").value = theme; document.documentElement.dataset.theme = theme; } } catch {}
 window.addEventListener("beforeunload", (event) => { if (isDirty() || modeBeforeTest !== null) { event.preventDefault(); event.returnValue = ""; } });
 navigator.serial?.addEventListener("disconnect", (event) => { if (event.target === port && !reconnecting && !closing) connectionLost(); });
-if (!("serial" in navigator) || !window.isSecureContext) { $("unsupported").hidden = false; $("connect").disabled = true; }
+resetDiagnostics();
+const initialProblem = browserProblem();
+setCheck("browser", initialProblem ? "error" : "ok", initialProblem || "Web Serial khả dụng.");
+if (initialProblem) { $("unsupported").hidden = false; $("connect").disabled = true; $("connectionAdvice").textContent = initialProblem; }
 fetch("firmware/web-manifest.json").then((r) => r.ok ? r.json() : null).then((manifest) => { latestVersion = typeof manifest?.version === "string" ? manifest.version : null; }).catch(() => {});
 go("connect", false);
