@@ -82,9 +82,15 @@ class Decoder:
             if 0 <= session <= 0xFFFFFFFF and mode in (0, 1):
                 self.bridge_session, self.standalone = session, bool(mode)
             return None
-        if len(fields) == 4 and fields[0] == "EVT":
+        if len(fields) in (4, 5) and fields[0] == "EVT":
+            if len(fields) == 5 and fields[4] not in {"PRESSED", "RELEASED"}:
+                return None
             try:
-                event = ButtonPress(int(fields[3]), int(fields[1]), int(fields[2]))
+                event = ButtonPress(
+                    int(fields[3]), int(fields[1]), int(fields[2]),
+                    pressed=len(fields) == 4 or fields[4] == "PRESSED",
+                    stateful=len(fields) == 5,
+                )
             except ValueError:
                 return None
             return event if event.session == self.bridge_session else None

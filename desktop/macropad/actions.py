@@ -24,6 +24,7 @@ class Executor:
             keyboard: Test controller; defaults to the Windows keyboard controller.
         """
         self._keyboard = keyboard if keyboard is not None else Controller()
+        self._held: dict[int, Key] = {}
 
     @staticmethod
     def _copy_screenshot() -> None:
@@ -48,6 +49,41 @@ class Executor:
             raise OSError("Khóa màn hình chỉ được hỗ trợ trên Windows.") from exc
         if not locked:
             raise OSError("Windows không cho phép khóa màn hình.")
+
+    def hold(self, button: int, action: Action) -> None:
+        """Own each held modifier by physical button, ignoring duplicate presses."""
+        action.validate()
+        if action.kind != "hold_key":
+            raise ValueError("Hành động này không phải Giữ phím.")
+        if button in self._held:
+            return
+        key = {"ctrl": Key.ctrl, "alt": Key.alt, "shift": Key.shift, "win": Key.cmd}[action.value.lower()]
+        already_held = key in self._held.values()
+        self._held[button] = key
+        if not already_held:
+            self._keyboard.press(key)
+
+    def release(self, button: int) -> None:
+        """Only release a modifier owned by this button; retain failed releases."""
+        key = self._held.get(button)
+        if key is None:
+            return
+        if list(self._held.values()).count(key) == 1:
+            self._keyboard.release(key)
+        del self._held[button]
+
+    def release_all(self) -> None:
+        """Attempt all releases; keep failed keys tracked for another attempt."""
+        errors = []
+        for key in set(self._held.values()):
+            try:
+                self._keyboard.release(key)
+            except (OSError, ValueError) as exc:
+                errors.append(exc)
+            else:
+                self._held = {button: held for button, held in self._held.items() if held != key}
+        if errors:
+            raise errors[0]
 
     def execute(self, action: Action) -> None:
         """Perform one validated mapping in the currently focused application.
@@ -108,6 +144,8 @@ class Executor:
         pressed = []
         try:
             for key in keys:
+                if key in self._held.values():
+                    continue
                 pressed.append(key)
                 self._keyboard.press(key)
         finally:

@@ -167,9 +167,14 @@ class BridgeUiMixin:
                 self._ble_ready = False
                 if not self._ready:
                     resume = (self.arm.isChecked() or self._resume_macro) and not self._dirty and not self.preview.isChecked()
+                    was_armed = self.arm.isChecked()
                     self.arm.setChecked(False)
+                    if not was_armed:
+                        self._release_held()
                     self.arm.setEnabled(False)
                     self._resume_macro = resume and self.bluetooth_button.isChecked()
+                else:
+                    self._release_held()
                 self._bridge_status()
             elif kind == "error":
                 self._log(f"Bluetooth: {payload}")

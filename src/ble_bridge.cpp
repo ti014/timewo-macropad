@@ -118,6 +118,7 @@ void BridgeKeyboard::onConnect(BLEServer* server, esp_ble_gatts_cb_param_t* para
 
 void BridgeKeyboard::onDisconnect(BLEServer* server) {
     BleKeyboard::onDisconnect(server);
+    ++disconnectCount_;  // Also catches a disconnect/reconnect between loop iterations.
     if (!enabled_) server->getAdvertising()->stop();
     overflow_ = true;  // A partial command must not survive reconnect.
 }
@@ -157,13 +158,15 @@ void BridgeKeyboard::updateState(bool standalone, uint32_t session, uint32_t seq
     if (!state_) return;
     uint8_t bytes[10];
     packet(bytes, standalone ? 1 : 0, session, sequence);
+    bytes[0] = 2;  // State v2 advertises HoldKey; flag/session/sequence layout stays unchanged.
     state_->setValue(bytes, sizeof(bytes));
 }
 
-void BridgeKeyboard::notifyPress(uint8_t button, uint32_t session, uint32_t sequence) {
+void BridgeKeyboard::notifyButton(uint8_t button, bool pressed, uint32_t session, uint32_t sequence) {
     if (!enabled_ || !isConnected() || !events_) return;
     uint8_t bytes[10];
     packet(bytes, button, session, sequence);
+    bytes[0] = pressed ? 1 : 2;
     events_->setValue(bytes, sizeof(bytes));
     events_->notify();
 }

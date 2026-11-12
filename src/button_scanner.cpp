@@ -16,6 +16,8 @@ void emit(ButtonEventHandler handler, uint8_t number, ButtonEventType type, uint
 
 void ButtonScanner::begin(const DeviceSettings& settings) {
     settings_ = settings;
+    holdMask_ = 0;
+    pairReported_ = false;
     const uint32_t now = millis();
     for (size_t i = 0; i < settings_.buttonCount; ++i) {
         pinMode(settings_.pins[i], INPUT_PULLUP);
@@ -59,7 +61,13 @@ void ButtonScanner::update(uint32_t now, ButtonEventHandler handler) {
             // Second key of the pairing combo: neither key runs its action or toggles BLE.
             const uint8_t partner = pairPartner(number);
             state.swallowed = partner != 0 && states_[partner - 1].stablePressed;
-            if (state.swallowed) states_[partner - 1].swallowed = true;
+            if (state.swallowed) {
+                states_[partner - 1].swallowed = true;
+                // The first key may already own a hold. Pairing swallows its later
+                // release even when the combo is cancelled, so release ownership now.
+                emit(handler, partner, ButtonEventType::Released, 0);
+                emit(handler, number, ButtonEventType::Released, 0);
+            }
             if (!isToggleButton(number) && !state.swallowed) {
                 emit(handler, number, ButtonEventType::Pressed, 0);
             }

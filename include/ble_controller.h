@@ -12,12 +12,17 @@ public:
     bool enabled() const;
     bool connected();
     bool execute(const MacroAction& action);
+    bool hold(uint8_t button, const MacroAction& action);
+    void release(uint8_t button);
+    void releaseAll();
     void setEnabled(bool enabled);
     BridgeKeyboard& bridge() { return keyboard_; }
 
 private:
     bool enabled_ = false;
     BridgeKeyboard keyboard_;
+    uint8_t heldKeys_[config::kMaxButtons] = {};
+    bool isHeld(uint8_t key) const;
 
     bool executeHotkey(const char* value);
     bool executeSequence(const char* value);

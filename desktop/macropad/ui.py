@@ -54,6 +54,7 @@ from .protocol import PINS
 from .transport import Connection, UsbIdentity, available_ports, find_usb_port, identify_usb_device
 
 HINTS = {
+    "hold_key": "Giữ Ctrl, Alt, Shift hoặc Win đến khi nhả nút. Cần firmware hỗ trợ nhấn/nhả.",
     "lock_screen": "Khóa Windows bằng API hệ thống. Dùng mục này thay cho Win+L.",
     "sequence": "Nh\u1eadp c\u00e1c b\u01b0\u1edbc, ng\u0103n c\u00e1ch b\u1eb1ng d\u1ea5u ph\u1ea9y; wait:300 l\u00e0 ch\u1edd 300 ms. V\u00ed d\u1ee5: Ctrl+L,wait:300,Ctrl+C",
     "screenshot": "Ch\u1ee5p to\u00e0n m\u00e0n h\u00ecnh hi\u1ec7n t\u1ea1i v\u00e0o clipboard \u0111\u1ec3 d\u00e1n b\u1eb1ng Ctrl+V.",
@@ -69,7 +70,7 @@ HINTS = {
 RESTART_SETTLE_MS = 2500
 # Grouped by who executes it: the board alone, or the app on this computer.
 ACTION_GROUPS = (
-    ("Chạy trên board", ("none", "hotkey", "sequence", "lock_screen", "close_app")),
+    ("Chạy trên board", ("none", "hotkey", "hold_key", "sequence", "lock_screen", "close_app")),
     ("Cần app trên máy tính", ("text", "app", "url", "script", "screenshot")),
 )
 STYLE = """
@@ -473,7 +474,7 @@ class ButtonEditor(QFrame):
             if on_board
             else "Chỉ chạy khi app này đang mở trên máy tính."
         )
-        editable = kind in {"hotkey", "sequence", "text", "app", "url", "script"}
+        editable = kind in {"hotkey", "hold_key", "sequence", "text", "app", "url", "script"}
         self.value.setVisible(editable)
         self.summary.setVisible(not editable)
         self.summary.setText(
@@ -484,6 +485,7 @@ class ButtonEditor(QFrame):
                 "close_app": "Gửi Alt+F4",
             }.get(kind, "")
         )
+        self.value.setPlaceholderText("Ctrl, Alt, Shift hoặc Win" if kind == "hold_key" else "Giá trị hoặc chuỗi phím…")
         self.value.setToolTip(self.hint.text())
         self.summary.setToolTip(self.hint.text())
         self.value.set_multiline(kind == "text")
@@ -1229,7 +1231,10 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             and not self._dirty
             and not self.preview.isChecked()
         )
+        was_armed = self.arm.isChecked()
         self.arm.setChecked(False)
+        if not was_armed:
+            self._release_held()
         self.arm.setEnabled(False)
         self._ready = False
         self._update_save_label()
@@ -1293,12 +1298,24 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             self._log(f"Kiểm tra USB thất bại: {exc}")
             self._disconnect(recover=True)
 
+    def _release_held(self) -> bool:
+        """Report release failure without losing keys needed for a retry."""
+        try:
+            self._executor.release_all()
+        except (OSError, ValueError) as exc:
+            self._log(f"Không nhả được phím đang giữ: {exc}. Hãy nhả phím trên bàn phím.")
+            return False
+        return True
+
     def _pause_macro(self) -> None:
         """Cancel both active macros and any pending automatic resume."""
         was_pending = self._resume_macro
         self._resume_macro = False
         self._ble.set_capture(False)
+        was_armed = self.arm.isChecked()
         self.arm.setChecked(False)
+        if not was_armed:
+            self._release_held()
         if was_pending:
             self._log("Đã hủy khôi phục macro. Khi cắm lại, macro vẫn tạm dừng.")
 
@@ -1306,7 +1323,11 @@ class MainWindow(BridgeUiMixin, QMainWindow):
         """Require valid saved config, clear backlog, then explicitly arm."""
         if not enabled:
             self._resume_macro = False
+            self._release_held()
         if enabled:
+            if not self._release_held():
+                self.arm.setChecked(False)
+                return
             if not (self._ready or self._ble_ready) or self._standalone or self.preview.isChecked() or self._dirty:
                 self.arm.setChecked(False)
                 self._log("Hãy lưu cấu hình và bỏ chọn Chỉ kiểm tra nút trước khi bật macro.")
@@ -1351,9 +1372,31 @@ class MainWindow(BridgeUiMixin, QMainWindow):
 
     def _handle_press(self, button: int) -> None:
         """Execute only when armed and another application has focus."""
-        if isinstance(button, ButtonPress) and not self._event_gate.accept(button):
+        if isinstance(button, ButtonPress):
+            session, sequence = self._event_gate.session, self._event_gate.sequence
+            if not self._event_gate.accept(button):
+                return
+            interrupted = session != button.session or (
+                sequence is not None and (button.sequence - sequence) & 0xFFFFFFFF != 1
+            )
+            if interrupted and not self._release_held():
+                self.arm.setChecked(False)
+                return
+            if not button.pressed:
+                try:
+                    self._executor.release(int(button))
+                except (OSError, ValueError) as exc:
+                    self.arm.setChecked(False)
+                    self._error(f"Không nhả được phím: {exc}")
+                return
+        if not 1 <= button <= self._button_count:
             return
         action = self._config.profiles[self._config.active][button - 1]
+        if action.kind == "hold_key" and (
+            not isinstance(button, ButtonPress) or not button.stateful
+        ):
+            self._log(f"BTN{button}: cần cập nhật firmware hỗ trợ nhấn/nhả để giữ phím.")
+            return
         if not (self._ready or self._ble_ready) or self._standalone or not self.arm.isChecked() or self.preview.isChecked():
             self._log(f"BTN{button}: nhận nút, không chạy macro.")
             return
@@ -1361,7 +1404,10 @@ class MainWindow(BridgeUiMixin, QMainWindow):
             self._log(f"BTN{button}: chuyển sang ứng dụng đích hoặc ẩn cửa sổ này để chạy macro.")
             return
         try:
-            self._executor.execute(action)
+            if action.kind == "hold_key":
+                self._executor.hold(int(button), action)
+            else:
+                self._executor.execute(action)
             self._log(f"BTN{button}: đã thực hiện {KINDS[action.kind]}.")
         except (OSError, ValueError) as exc:
             self.arm.setChecked(False)

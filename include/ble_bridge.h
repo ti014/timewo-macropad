@@ -15,7 +15,8 @@ public:
     void setEnabled(bool enabled);
     void forgetBonds();
     void updateState(bool standalone, uint32_t session, uint32_t sequence);
-    void notifyPress(uint8_t button, uint32_t session, uint32_t sequence);
+    void notifyButton(uint8_t button, bool pressed, uint32_t session, uint32_t sequence);
+    uint32_t disconnectCount() const { return disconnectCount_; }
     bool pollCommand(UsbCommand& command);
 
 protected:
@@ -42,5 +43,6 @@ private:
     size_t pendingOffset_ = 0;
     volatile bool overflow_ = false;
     volatile bool enabled_ = true;
+    volatile uint32_t disconnectCount_ = 0;
     bool started_ = false;
 };

@@ -17,6 +17,7 @@ KINDS = {
     "sequence": "Chu\u1ed7i ph\u00edm",
     "screenshot": "Ch\u1ee5p m\u00e0n h\u00ecnh v\u00e0o clipboard",
     "close_app": "\u0110\u00f3ng \u1ee9ng d\u1ee5ng \u0111ang d\u00f9ng",
+    "hold_key": "Giữ phím",
     "none": "Không gán",
     "hotkey": "Phím tắt",
     "text": "Văn bản",
@@ -39,6 +40,7 @@ FIRMWARE_KIND_IDS = {
     "app": 7,
     "url": 8,
     "script": 9,
+    "hold_key": 10,
 }
 FIRMWARE_DIRECT_KINDS = {
     "none",
@@ -46,6 +48,7 @@ FIRMWARE_DIRECT_KINDS = {
     "sequence",
     "lock_screen",
     "close_app",
+    "hold_key",
 }
 ALIASES = {
     "control": "ctrl",
@@ -166,6 +169,9 @@ class Action:
             raise ValueError("Giá trị phải là văn bản tối đa 2000 ký tự, không chứa NUL.")
         if self.kind == "hotkey":
             parse_hotkey(self.value)
+        elif self.kind == "hold_key":
+            if self.value.lower() not in {"ctrl", "alt", "shift", "win"}:
+                raise ValueError("Giữ phím chỉ hỗ trợ Ctrl, Alt, Shift hoặc Win.")
         elif self.kind == "sequence":
             parse_sequence(self.value)
         elif self.kind == "text" and not self.value:

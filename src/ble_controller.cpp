@@ -41,8 +41,40 @@ void BleController::begin(const char* name, bool enabled, bool forgetBonds) {
 }
 
 void BleController::setEnabled(bool enabled) {
+    if (!enabled) releaseAll();
     enabled_ = enabled;
     keyboard_.setEnabled(enabled);
+}
+
+bool BleController::isHeld(uint8_t key) const {
+    for (uint8_t held : heldKeys_) if (held == key) return true;
+    return false;
+}
+
+bool BleController::hold(uint8_t button, const MacroAction& action) {
+    if (button < 1 || button > config::kMaxButtons || !connected() ||
+        action.kind != ActionKind::HoldKey || !isModifier(action.value)) return false;
+    const uint8_t key = equalsIgnoreCase(action.value, "ctrl") || equalsIgnoreCase(action.value, "control")
+                            ? KEY_LEFT_CTRL
+                        : equalsIgnoreCase(action.value, "shift") ? KEY_LEFT_SHIFT
+                        : equalsIgnoreCase(action.value, "alt") ? KEY_LEFT_ALT : KEY_LEFT_GUI;
+    if (heldKeys_[button - 1] == key) return true;
+    release(button);
+    if (!isHeld(key)) keyboard_.press(key);
+    heldKeys_[button - 1] = key;
+    return true;
+}
+
+void BleController::release(uint8_t button) {
+    if (button < 1 || button > config::kMaxButtons) return;
+    const uint8_t key = heldKeys_[button - 1];
+    heldKeys_[button - 1] = 0;
+    if (key != 0 && !isHeld(key)) keyboard_.release(key);
+}
+
+void BleController::releaseAll() {
+    memset(heldKeys_, 0, sizeof(heldKeys_));
+    keyboard_.releaseAll();
 }
 
 bool BleController::enabled() const {
@@ -122,6 +154,7 @@ bool BleController::executeChord(const char* value) {
     uint8_t pressed[6]{};
     size_t pressedCount = 0;
     bool mediaUsed = false;
+    bool heldUsed = false;
     char* token = copy;
     bool ok = true;
     while (token != nullptr && *token != '\0') {
@@ -135,8 +168,13 @@ bool BleController::executeChord(const char* value) {
                           : equalsIgnoreCase(token, "shift") ? KEY_LEFT_SHIFT
                           : equalsIgnoreCase(token, "alt") ? KEY_LEFT_ALT
                                                             : KEY_LEFT_GUI;
-            keyboard_.press(key);
-            pressed[pressedCount++] = key;
+            if (!isHeld(key)) {
+                if (pressedCount >= sizeof(pressed)) { ok = false; break; }
+                keyboard_.press(key);
+                pressed[pressedCount++] = key;
+            } else {
+                heldUsed = true;
+            }
         } else {
             const uint8_t key = keyCodeForName(token, media);
             if (media) {
@@ -148,13 +186,24 @@ bool BleController::executeChord(const char* value) {
                 ok = false;
                 break;
             }
+            if (pressedCount >= sizeof(pressed)) { ok = false; break; }
             keyboard_.press(key);
             pressed[pressedCount++] = key;
         }
         token = next;
     }
-    keyboard_.releaseAll();
-    return ok && (mediaUsed || pressedCount > 0);
+    const bool sent = mediaUsed || heldUsed || pressedCount > 0;
+    while (pressedCount > 0) {
+        uint8_t key = pressed[--pressedCount];
+        // BleKeyboard::release('+') also clears Shift. Release its unshifted
+        // physical key instead when Shift belongs to another button.
+        static const char shifted[] = "!@#$%^&*()_+{}|:\"<>?~";
+        static const char plain[] = "1234567890-=[]\\;',./`";
+        const char* symbol = key < 128 ? strchr(shifted, key) : nullptr;
+        if (isHeld(KEY_LEFT_SHIFT) && symbol != nullptr) key = plain[symbol - shifted];
+        keyboard_.release(key);
+    }
+    return ok && sent;
 }
 
 uint8_t BleController::keyCodeForName(const char* name, bool& isMedia) {

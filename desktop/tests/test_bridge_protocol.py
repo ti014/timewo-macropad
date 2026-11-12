@@ -13,7 +13,7 @@ def test_ble_event_and_state_are_bounded_and_versioned() -> None:
     assert event == 2
     assert (event.session, event.sequence) == (123, 7)
     assert decode_state(struct.pack("<BBII", 1, 0, 123, 7)) == (False, 123, 7)
-    for packet in (b"", b"x" * 40, struct.pack("<BBII", 2, 2, 123, 7)):
+    for packet in (b"", b"x" * 40, struct.pack("<BBII", 3, 2, 123, 7)):
         with pytest.raises(ValueError):
             decode_event(packet)
     with pytest.raises(ValueError):

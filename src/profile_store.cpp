@@ -166,6 +166,9 @@ bool ProfileStore::validAction(ActionKind kind, const char* value) const {
         case ActionKind::Url:
         case ActionKind::Script:
             return true;
+        case ActionKind::HoldKey:
+            return strcasecmp(value, "ctrl") == 0 || strcasecmp(value, "alt") == 0 ||
+                   strcasecmp(value, "shift") == 0 || strcasecmp(value, "win") == 0;
     }
     return false;
 }

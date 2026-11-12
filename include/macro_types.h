@@ -15,6 +15,7 @@ enum class ActionKind : uint8_t {
     App = 7,
     Url = 8,
     Script = 9,  // Runs a script on the computer; the board only reports the press.
+    HoldKey = 10,
 };
 
 struct MacroAction {

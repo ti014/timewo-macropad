@@ -27,6 +27,11 @@ public:
     bool pressed(uint8_t number) const;
     uint8_t count() const { return settings_.buttonCount; }
     uint8_t pin(uint8_t number) const;
+    void setHoldButtons(uint16_t mask) { holdMask_ = mask; }
+    // Do not turn an old physical hold into a new tap after a profile/owner change.
+    void cancelDeferredPresses() {
+        for (auto& state : states_) if (state.stablePressed) state.longReported = true;
+    }
 
 private:
     struct State {
@@ -42,10 +47,13 @@ private:
     DeviceSettings settings_{};
     State states_[config::kMaxButtons]{};
     bool pairReported_ = false;
+    uint16_t holdMask_ = 0;
 
     uint8_t pairPartner(uint8_t number) const;
     void checkPair(uint32_t now, ButtonEventHandler handler);
 
-    // The last button doubles as the Bluetooth on/off switch when held.
-    bool isToggleButton(uint8_t number) const { return number == settings_.buttonCount; }
+    // HoldKey needs its real down/up edges, including on the last button.
+    bool isToggleButton(uint8_t number) const {
+        return number == settings_.buttonCount && !(holdMask_ & (1U << (number - 1)));
+    }
 };

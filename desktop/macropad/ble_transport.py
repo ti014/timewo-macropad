@@ -38,6 +38,7 @@ class BleConnection:
         self.address: str | None = None
         self.standalone = False
         self.session: int | None = None
+        self.supports_hold = False
         self._capture = False
         self._generation = 0
         self._gate = EventGate()
@@ -139,6 +140,7 @@ class BleConnection:
 
     def _set_state(self, data: bytes) -> None:
         standalone, session, sequence = decode_state(data)
+        self.supports_hold = data[0] == 2
         if standalone != self.standalone:
             self.set_capture(False)
         self.standalone, self.session = standalone, session
@@ -149,6 +151,7 @@ class BleConnection:
             event = decode_event(data)
         except ValueError:
             return
+        event.stateful = self.supports_hold
         if event.session != self.session or self.standalone or not self._gate.accept(event):
             return
         self._emit("press", (event, self._capture, self._generation))

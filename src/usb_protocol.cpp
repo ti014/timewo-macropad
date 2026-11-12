@@ -119,7 +119,7 @@ void UsbProtocol::printInfo(const DeviceSettings& settings) const {
     Serial.printf("DEVICE 1 %s %s %s\n", CONFIG_IDF_TARGET, config::kFirmwareVersion,
                   config::kBoardId);
     // What this firmware can do on its own; the app hides the rest for this board.
-    Serial.println("CAPS ble_hid hotkey sequence wait media lock_screen close_app");
+    Serial.println("CAPS ble_hid hotkey hold_key sequence wait media lock_screen close_app");
     Serial.printf("LIMITS %u %u %u %u %u %u %u\n", static_cast<unsigned>(config::kMaxButtons),
                   static_cast<unsigned>(config::kActionValueCapacity - 1),
                   static_cast<unsigned>(config::kMaxNameLength),
@@ -230,7 +230,7 @@ bool UsbProtocol::parseLine(UsbCommand& command) {
     uint32_t button = 0;
     uint32_t kind = 0;
     if (!parseUnsigned(buttonText, button) || !parseUnsigned(kindText, kind) ||
-        button < 1 || button > ProfileStore::kButtonCount || kind > 9 || encoded == nullptr ||
+        button < 1 || button > ProfileStore::kButtonCount || kind > static_cast<uint8_t>(ActionKind::HoldKey) || encoded == nullptr ||
         !(equals(encoded, "-") || decodeHex(encoded, command.value, sizeof(command.value)))) {
         return false;
     }

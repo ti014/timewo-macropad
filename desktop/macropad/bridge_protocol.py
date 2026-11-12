@@ -16,7 +16,10 @@ MAX_BUTTONS = 9
 class ButtonPress(int):
     """Button index with boot-session and monotonically increasing event ID."""
 
-    def __new__(cls, button: int, session: int, sequence: int) -> Self:
+    def __new__(
+        cls, button: int, session: int, sequence: int, *,
+        pressed: bool = True, stateful: bool = True,
+    ) -> Self:
         if button not in range(1, MAX_BUTTONS + 1) or not 0 <= session <= 0xFFFFFFFF:
             raise ValueError("Invalid button event")
         if not 0 <= sequence <= 0xFFFFFFFF:
@@ -24,6 +27,8 @@ class ButtonPress(int):
         event = super().__new__(cls, button)
         event.session = session
         event.sequence = sequence
+        event.pressed = pressed
+        event.stateful = stateful
         return event
 
 
@@ -32,9 +37,9 @@ def decode_event(data: bytes) -> ButtonPress:
     if len(data) != PACKET.size:
         raise ValueError("Invalid BLE event size")
     version, button, session, sequence = PACKET.unpack(data)
-    if version != 1:
+    if version not in (1, 2):
         raise ValueError("Unsupported BLE protocol")
-    return ButtonPress(button, session, sequence)
+    return ButtonPress(button, session, sequence, pressed=version == 1)
 
 
 def decode_state(data: bytes) -> tuple[bool, int, int]:
@@ -42,7 +47,7 @@ def decode_state(data: bytes) -> tuple[bool, int, int]:
     if len(data) != PACKET.size:
         raise ValueError("Invalid BLE state size")
     version, mode, session, sequence = PACKET.unpack(data)
-    if version != 1 or mode not in (0, 1):
+    if version not in (1, 2) or mode not in (0, 1):
         raise ValueError("Unsupported BLE state")
     return bool(mode), session, sequence
 
