@@ -2,631 +2,135 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>timewo Macropad</title>
-<meta name="description" content="Nạp firmware và cấu hình macropad ESP32 ngay trên trình duyệt qua USB, theo từng bước.">
+<meta name="description" content="Kết nối, gán phím và kiểm tra macropad ESP32 qua USB theo từng bước.">
 <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
 <style>
+/* Workbench: numbered setup rail, focused editor, live device summary. */
 :root {
-  --bg: #f6f5f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a65; --line: #dedcd4;
-  --accent: #1f6feb; --accent-soft: #e6efff; --accent-text: #ffffff;
-  --ok: #1a7f37; --ok-soft: #e3f4e8; --err: #b3261e; --hit: #ffd84d;
+  color-scheme: light;
+  --bg:#edf1f5; --surface:#ffffff; --ink:#1d2b3c; --muted:#5c6b7e; --line:#cdd7e2;
+  --accent:#215ac7; --accent-ink:#ffffff; --soft:#eaf0ff; --success:#176746; --danger:#ac2635;
+  --heading:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --body:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; --mono:Consolas,monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
-    --accent: #4c8dff; --accent-soft: #1d2a44; --accent-text: #0d0d0c;
-    --ok: #4ac26b; --ok-soft: #1c3324; --err: #ff8a80; --hit: #b8961f;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #171716; --card: #222220; --text: #ecebe6; --muted: #a3a29b; --line: #3a3936;
-  --accent: #4c8dff; --accent-soft: #1d2a44; --accent-text: #0d0d0c;
-  --ok: #4ac26b; --ok-soft: #1c3324; --err: #ff8a80; --hit: #b8961f;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
-h1 { font-size: 26px; margin: 0 0 4px; }
-h2 { font-size: 17px; margin: 0; }
-p { margin: 8px 0; }
-code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; }
-.muted { color: var(--muted); }
-.err { color: var(--err); }
-.ok { color: var(--ok); }
-button, select, input { font: inherit; color: inherit; }
-button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
-  padding: 10px 18px; cursor: pointer; font-weight: 600; }
-button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
-button.link { background: none; color: var(--accent); padding: 0; font-weight: 500; text-decoration: underline; }
-button:disabled { opacity: .5; cursor: default; }
-select, input { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; min-width: 0; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
-
-/* Progress bar of steps */
-.stepper { display: flex; gap: 4px; list-style: none; padding: 0; margin: 20px 0 8px; }
-.stepper li { flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
-.stepper li::before { content: attr(data-n); display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; margin: 0 auto 4px; border-radius: 50%; border: 2px solid var(--line);
-  background: var(--card); font-weight: 700; font-size: 13px; }
-.stepper li.done { color: var(--ok); }
-.stepper li.done::before { content: "\2713"; border-color: var(--ok); background: var(--ok); color: var(--card); }
-.stepper li.current { color: var(--accent); font-weight: 700; }
-.stepper li.current::before { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
-
-/* One card per step; only the current one is open */
-.step { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; }
-.step header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-.step .num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
-  justify-content: center; font-size: 12px; font-weight: 700; border: 2px solid var(--line); color: var(--muted); }
-.step .summary { margin-left: auto; font-size: 13px; color: var(--muted); text-align: right; }
-.step .body { display: none; padding: 0 16px 16px 50px; }
-.step.current { border: 2px solid var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
-.step.current .num { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-.step.current .body { display: block; }
-.step.done .num { background: var(--ok); border-color: var(--ok); color: var(--card); }
-.step.done .num::before { content: "\2713"; }
-.step.done .num span { display: none; }
-.step.done header { cursor: pointer; }
-.step.todo { opacity: .55; }
-.step.todo .summary { display: none; }
-
-.pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 10px; }
-.pins label, .field { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
-.field { margin-top: 10px; max-width: 260px; }
-details { margin-top: 12px; }
-summary { cursor: pointer; color: var(--muted); }
-.notice { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-th { font-size: 13px; color: var(--muted); font-weight: 600; }
-td input, td select { width: 100%; }
-.keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 360px; margin-top: 12px; }
-.key { border: 2px solid var(--line); border-radius: 10px; padding: 14px 6px; text-align: center; font-weight: 700;
-  transition: background .1s, border-color .1s; }
-.key small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
-.key.pressed { border-color: var(--ok); background: var(--ok-soft); }
-.key.hit { background: var(--hit); }
-#message { min-height: 1.5em; margin-top: 10px; }
-#log { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-top: 8px;
-  font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 200px; overflow: auto; white-space: pre-wrap; }
-[hidden] { display: none !important; }
-@media (max-width: 560px) {
-  .stepper li { font-size: 0; }
-  .stepper li.current { font-size: 12px; }
-  .step .body { padding-left: 16px; }
-  .step .summary { display: none; }
-}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#141d29;--surface:#1d2938;--ink:#e7edf6;--muted:#a8b8ca;--line:#3c4d62;--accent:#9dbbff;--accent-ink:#102443;--soft:#263b5e;--success:#84d9b0;--danger:#ff9fab}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#141d29;--surface:#1d2938;--ink:#e7edf6;--muted:#a8b8ca;--line:#3c4d62;--accent:#9dbbff;--accent-ink:#102443;--soft:#263b5e;--success:#84d9b0;--danger:#ff9fab}
+*{box-sizing:border-box} [hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);padding-block:0 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select,textarea{font:inherit;color:inherit}button,a,input,select,textarea,summary{touch-action:manipulation}
+button{border:1px solid transparent;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:10px 16px;font-weight:650;cursor:pointer;line-height:1.4;min-height:42px}
+button:hover:not(:disabled){filter:brightness(.94)}button:disabled{opacity:.48;cursor:not-allowed}
+button.secondary{background:var(--surface);border-color:var(--line);color:var(--ink)}button.quiet{background:transparent;color:var(--muted);border-color:var(--line)}button.small{font-size:13px;min-height:34px;padding:6px 10px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}input,select,textarea{border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:10px 12px;width:100%;min-width:0}textarea{resize:vertical;min-height:90px}input[type="checkbox"]{width:18px;height:18px;accent-color:var(--accent)}
+h1,h2,h3,p{margin:0}h1,h2,h3{font-family:var(--heading);line-height:1.2;text-wrap:balance}h1{font-size:21px;letter-spacing:-.6px}h2{font-size:28px;letter-spacing:-.8px}h3{font-size:17px}p{max-width:70ch}a{color:var(--accent)}code,kbd{font:13px var(--mono);border:1px solid var(--line);border-radius:4px;padding:2px 5px;background:var(--bg)}small,.muted{color:var(--muted)}.eyebrow{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;color:var(--muted)}
+.topbar{max-width:1440px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:94px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px}.brand-mark{display:grid;grid-template-columns:repeat(2,9px);gap:3px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.brand-mark i{width:9px;height:9px;border:1.5px solid var(--accent);border-radius:2px}.brand-mark i:last-child{background:var(--accent)}.brand small{display:block;font-size:12px;margin-top:2px}.top-actions{display:flex;align-items:center;gap:10px}.top-actions select{width:auto;font-size:13px;padding:7px}.badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:99px;padding:5px 10px;font-size:12px;font-weight:650;white-space:nowrap;background:var(--surface)}.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}.badge.online{color:var(--success)}.badge.online::before{background:var(--success)}
+.workspace{max-width:1440px;margin:24px auto;display:grid;grid-template-columns:205px minmax(0,1fr) 235px;gap:24px;align-items:start}.workspace>*{min-width:0}.rail{position:sticky;top:24px}.rail-label{margin:0 0 15px 10px}.stepper{list-style:none;padding:0;margin:0;display:grid;gap:6px}.stepper button{display:flex;gap:12px;text-align:left;align-items:center;width:100%;color:var(--muted);background:transparent;font-size:14px;border:1px solid transparent;padding:12px 10px;font-weight:500}.stepper .number{display:flex;align-items:center;justify-content:center;width:30px;height:30px;flex:none;border:1px solid var(--line);border-radius:8px;font:13px var(--mono);background:var(--surface)}.stepper small{display:block;font-size:11px;margin-top:2px}.stepper button[aria-current="step"]{background:var(--soft);color:var(--accent);font-weight:700}.stepper button[aria-current="step"] .number{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.stepper button.complete .number{color:var(--success);border-color:var(--success)}.rail-note{padding:18px 10px;font-size:12px;color:var(--muted)}
+.content{min-width:0}.step{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}.step-header{padding:28px 28px 22px;display:grid;gap:10px}.step-header p{color:var(--muted)}.step-body{padding:0 28px 28px;display:grid;gap:22px}.step-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 28px;border-top:1px solid var(--line);background:var(--bg)}.step-footer .next{margin-left:auto}.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.notice{border:1px solid var(--line);border-radius:8px;padding:13px 15px;background:var(--bg);font-size:13px}.notice.warning{border-color:var(--danger);color:var(--danger)}.notice strong{display:block;margin-bottom:3px}.ok{color:var(--success)}.err{color:var(--danger)}#message{margin-bottom:14px;border:1px solid var(--line);border-radius:8px;padding:12px 15px;background:var(--surface);overflow-wrap:anywhere}#demoBanner{margin-bottom:14px}#message:empty{display:none}#message.err{border-color:var(--danger)}#message.ok{border-color:var(--success)}
+.side{display:grid;gap:18px;position:sticky;top:24px}.device-card{border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--surface);display:grid;gap:16px}.device-heading{display:grid;gap:8px}.device-name{font-family:var(--heading);font-size:19px;overflow-wrap:anywhere}.device-facts{margin:0;display:grid;gap:10px;font-size:12px}.device-facts div{display:flex;justify-content:space-between;gap:12px}.device-facts dt{color:var(--muted)}.device-facts dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.side-note{padding:0 5px;display:grid;gap:7px;font-size:12px;color:var(--muted)}.side-note h3{font-size:13px;color:var(--ink)}
+.connect-panel{display:grid;grid-template-columns:145px minmax(0,1fr);align-items:center;gap:28px;padding:25px;background:var(--bg);border-radius:10px}.mini-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:13px;background:var(--surface);border:1px solid var(--line);border-radius:12px;transform:rotate(-5deg);box-shadow:4px 6px 0 var(--line)}.mini-pad span{aspect-ratio:1;border:1px solid var(--line);border-radius:5px;display:grid;place-items:center;font:13px var(--mono)}.mini-pad span:nth-child(2),.mini-pad span:nth-child(5){background:var(--soft);color:var(--accent)}.connect-copy{display:grid;gap:12px}.checklist{list-style:none;padding:0;margin:0;display:grid;gap:12px;font-size:14px}.checklist li{display:flex;gap:10px}.checklist li::before{content:"✓";color:var(--success);font-weight:bold}.help{border-top:1px solid var(--line);padding-top:16px}.help summary{cursor:pointer;font-size:13px;font-weight:650}.help p{font-size:13px;color:var(--muted);margin-top:10px}.firmware-instructions{display:grid;gap:12px;padding-left:22px;font-size:14px}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.field{display:grid;gap:6px;font-size:13px;font-weight:600;min-width:0}.field small{font-size:12px;font-weight:400}.field.error input,.field.error select,.field.error textarea{border-color:var(--danger)}.pins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pin-field{display:grid;gap:6px;font-size:13px}.pin-field span{display:flex;justify-content:space-between;gap:8px}.pin-field small{font-size:11px}.section-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.advanced{border-top:1px solid var(--line);padding-top:16px}.advanced summary{cursor:pointer;font-weight:600;font-size:14px}.advanced .fields{margin-top:16px}.wiring{font-size:13px;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;background:var(--bg);border:1px dashed var(--line);border-radius:8px;flex-wrap:wrap}.wiring span{padding:5px 10px;border:1px solid var(--line);border-radius:4px;background:var(--surface);font-family:var(--mono)}
+.profile-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.profile-toolbar p{font-size:12px;margin-right:auto}.profile-toolbar input{display:none}.pad-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.pad-key{background:var(--surface);color:var(--ink);border:1px solid var(--line);text-align:left;display:grid;gap:5px;padding:13px;min-height:94px;min-width:0;box-shadow:0 3px 0 var(--line);position:relative}.pad-key .key-top{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}.pad-key .key-value{font:600 14px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pad-key .key-kind{font-size:11px;color:var(--muted);font-weight:400}.pad-key[aria-pressed="true"]{background:var(--soft);border-color:var(--accent);box-shadow:0 3px 0 var(--accent)}.pad-key.tested{border-color:var(--success)}.pad-key.down{background:var(--soft);border-color:var(--accent)}.pad-key.hit{outline:3px solid var(--accent);outline-offset:2px}.key-check{color:var(--success)}
+.editor{border:1px solid var(--line);border-radius:10px;overflow:hidden}.editor-top{padding:15px 18px;background:var(--bg);display:flex;align-items:center;gap:12px;flex-wrap:wrap}.editor-top small{margin-left:auto;font-size:12px}.editor-body{padding:18px;display:grid;gap:16px}.editor-fields{display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px}.input-action{display:flex;gap:8px;align-items:start}.input-action input{flex:1}.input-action button{flex:none}.inline-error{color:var(--danger);font-size:12px;min-height:0}.action-help{font-size:12px;color:var(--muted)}.quick-panel{display:grid;gap:10px}.quick-panel .eyebrow{font-size:10px}.modifiers,.quick-keys,.presets{display:flex;flex-wrap:wrap;gap:6px}.quick-keys button,.modifiers button{font:12px var(--mono);min-width:42px}.modifiers button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.presets button{font-size:12px;min-height:32px;padding:5px 9px}.editor-bottom{border-top:1px solid var(--line);padding:12px 18px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.editor-bottom select{width:auto;font-size:12px;padding:6px 8px}.editor-bottom .actions{gap:6px}.editor-bottom button{font-size:12px}.save-state{font-size:12px;color:var(--muted)}.save-state.dirty{color:var(--danger)}
+.test-layout{display:grid;gap:18px}.progress{height:7px;border-radius:99px;background:var(--line);overflow:hidden}.progress>span{height:100%;background:var(--success);display:block;width:0;transition:width .2s}.test-result{font-size:13px;min-height:20px}.test-key{cursor:default}.finish-name{font-family:var(--mono);font-size:18px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow-wrap:anywhere}.success-mark{width:46px;height:46px;border:1px solid var(--success);border-radius:50%;display:grid;place-items:center;color:var(--success);font-size:24px}.log-details{margin-top:20px}.log-details summary{cursor:pointer;font-size:12px;color:var(--muted)}#log{margin:10px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:8px;font:11px/1.6 var(--mono);max-height:200px;padding:12px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.footer-note{font-size:11px;color:var(--muted);max-width:1440px;margin:auto}.kbd-hint{font-size:12px;color:var(--muted)}
+@media(min-width:1500px){.workspace{grid-template-columns:220px minmax(0,1fr) 250px}}
+@media(max-width:1170px){.workspace{grid-template-columns:185px minmax(0,1fr)}.side{position:static;grid-column:2;grid-template-columns:1fr 1fr}.device-facts{grid-template-columns:1fr 1fr}.device-facts div{display:block}.device-facts dd{text-align:left}.device-heading{display:flex;justify-content:space-between;align-items:center}.side-note{padding:12px}.device-card{gap:12px}.editor-fields{grid-template-columns:180px minmax(0,1fr)}}
+@media(max-width:800px){.workspace{display:block;margin-top:16px}.rail{position:static;margin-bottom:18px}.rail-label,.rail-note,.stepper small{display:none}.stepper{display:flex;gap:4px}.stepper li{flex:1;min-width:0}.stepper button{display:grid;justify-items:center;gap:5px;padding:8px 2px;font-size:11px}.stepper .number{width:27px;height:27px}.stepper .step-text{overflow:hidden;text-overflow:ellipsis;max-width:100%;white-space:nowrap}.side{margin-top:20px;display:grid;grid-template-columns:1fr 1fr}.step-header{padding:22px 22px 18px}.step-body{padding:0 22px 22px}.step-footer{padding:16px 22px}.topbar{min-height:80px}.brand small{display:none}.editor-fields{grid-template-columns:180px minmax(0,1fr)}h2{font-size:25px}}
+@media(max-width:530px){.topbar{flex-wrap:wrap;gap:10px;padding-block:14px}.top-actions{margin-left:auto}.top-actions .badge{display:none}h1{font-size:19px}.step-header{padding:20px 16px 16px}.step-body{padding:0 16px 20px}.step-footer{padding:15px 16px}.connect-panel{grid-template-columns:1fr;padding:20px}.mini-pad{width:130px;margin:0 auto 12px;display:none}.fields,.editor-fields{grid-template-columns:1fr}.pins{grid-template-columns:repeat(2,minmax(0,1fr))}.pad-key{padding:10px;min-height:88px}.pad-key .key-value{font-size:12px}.side{display:block}.side-note{margin-top:15px}.input-action{flex-wrap:wrap}.input-action input{flex-basis:100%}.editor-body{padding:15px}.stepper button{font-size:10px}.device-facts{grid-template-columns:1fr 1fr}.device-card{padding:16px}.step-footer button{font-size:13px}.profile-toolbar button{flex:1}.editor-bottom .actions{width:100%}.editor-bottom select{flex:1;width:0}.top-actions select{max-width:110px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
 <body>
-<main>
-  <h1>timewo Macropad</h1>
-  <p class="muted">Cài đặt bàn phím macro ESP32 ngay trên trình duyệt. Làm lần lượt từng bước, trang sẽ dẫn bạn tới khi xong.</p>
-  <p id="unsupported" class="notice err" hidden>Trình duyệt này không kết nối được với USB. Hãy mở trang bằng <b>Chrome</b> hoặc <b>Edge</b> trên máy tính.</p>
+<header class="topbar">
+  <div class="brand"><div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div><h1>timewo Macropad</h1><small>Không gian cấu hình thiết bị</small></div></div>
+  <div class="top-actions"><span class="badge" id="connectionBadge">Chưa kết nối</span><label><span class="eyebrow" hidden>Giao diện</span><select id="theme" aria-label="Giao diện màu"><option value="system">Theo hệ thống</option><option value="light">Sáng</option><option value="dark">Tối</option></select></label></div>
+</header>
+<div class="workspace">
+  <nav class="rail" aria-label="Các bước cấu hình">
+    <p class="eyebrow rail-label">Thiết lập board</p>
+    <ol class="stepper" id="stepper">
+      <li><button data-step="connect" id="nav-connect"><span class="number">1</span><span class="step-text">Kết nối<small>Chọn board qua USB</small></span></button></li>
+      <li><button data-step="firmware" id="nav-firmware"><span class="number">2</span><span class="step-text">Firmware<small>Kiểm tra phiên bản</small></span></button></li>
+      <li><button data-step="pins" id="nav-pins"><span class="number">3</span><span class="step-text">Nút & GPIO<small>Khai báo phần cứng</small></span></button></li>
+      <li><button data-step="actions" id="nav-actions"><span class="number">4</span><span class="step-text">Gán chức năng<small>Phím tắt theo ý bạn</small></span></button></li>
+      <li><button data-step="test" id="nav-test"><span class="number">5</span><span class="step-text">Kiểm tra<small>Bấm nút trên board</small></span></button></li>
+      <li><button data-step="done" id="nav-done"><span class="number">6</span><span class="step-text">Hoàn tất<small>Sẵn sàng sử dụng</small></span></button></li>
+    </ol>
+    <p class="rail-note">Đã có cấu hình? Trang đọc từ board, không tự ghi đè phím đang dùng.</p>
+  </nav>
+  <main class="content" id="main">
+    <div id="message" role="status" aria-live="polite"></div>
+    <p id="unsupported" class="notice warning" hidden>Web Serial cần Chrome hoặc Edge trên máy tính và trang HTTPS. Bạn vẫn có thể <button id="unsupportedDemo" class="secondary small">Xem giao diện mẫu</button>.</p>
+    <div id="demoBanner" class="notice" hidden><strong>Đang xem bản mẫu, không kết nối phần cứng.</strong>Mọi thay đổi chỉ nằm trên trang này. <button id="exitDemo" class="secondary small">Thoát bản mẫu</button></div>
 
-  <ol class="stepper" id="stepper">
-    <li data-n="1" data-step="connect">Kết nối</li>
-    <li data-n="2" data-step="firmware">Firmware</li>
-    <li data-n="3" data-step="pins">Nút & GPIO</li>
-    <li data-n="4" data-step="actions">Gán phím</li>
-    <li data-n="5" data-step="test">Kiểm tra</li>
-  </ol>
-  <div id="message" role="status" aria-live="polite"></div>
-
-  <section class="step" data-step="connect">
-    <header><span class="num"><span>1</span></span><h2>Cắm board và kết nối</h2><span class="summary"></span></header>
-    <div class="body">
-      <p>Cắm board vào máy tính bằng cáp USB <b>có truyền dữ liệu</b> (cáp chỉ sạc sẽ không thấy board). Đóng ứng dụng macropad trên Windows nếu đang mở.</p>
-      <p>Bấm nút bên dưới, chọn board trong danh sách hiện ra (thường tên <i>USB JTAG/serial</i>, <i>CP210x</i> hoặc <i>CH340</i>), rồi bấm <b>Kết nối</b>.</p>
-      <div class="actions"><button id="connect">Kết nối board</button></div>
-      <details><summary>Không thấy board trong danh sách?</summary>
-        <p>Thử cáp USB khác hoặc cổng USB khác. Với board mới tinh: giữ nút <b>BOOT</b> trên board, cắm USB, rồi thả nút và bấm lại Kết nối board.</p>
-      </details>
-    </div>
-  </section>
-
-  <section class="step" data-step="firmware">
-    <header><span class="num"><span>2</span></span><h2>Nạp firmware</h2><span class="summary"></span></header>
-    <div class="body">
-      <p id="firmwareReason"></p>
-      <ol>
-        <li>Bấm <b>Nạp firmware</b> và chọn lại board trong danh sách.</li>
-        <li>Bấm <b>Install</b>. Khi được hỏi <i>Erase device</i>: board mới hoặc board lỗi thì <b>bật</b>; cập nhật board đang dùng thì <b>tắt</b> để giữ GPIO và phím đã gán.</li>
-        <li>Chờ tới khi báo <i>Installation complete</i>, đóng hộp thoại, rồi bấm <b>Đã nạp xong</b>.</li>
-      </ol>
-      <div class="actions">
-        <esp-web-install-button manifest="firmware/web-manifest.json">
-          <button slot="activate">Nạp firmware</button>
-          <span slot="unsupported" class="err">Trình duyệt chưa hỗ trợ, hãy dùng Chrome hoặc Edge.</span>
-          <span slot="not-allowed" class="err">Trang phải mở qua HTTPS.</span>
-        </esp-web-install-button>
-        <button id="flashed" class="secondary">Đã nạp xong</button>
-        <button id="skipFirmware" class="link" hidden>Bỏ qua, giữ firmware hiện tại</button>
+    <section class="step" data-step="connect" aria-labelledby="title-connect">
+      <div class="step-header"><p class="eyebrow">Bước 1 / 6</p><h2 id="title-connect" tabindex="-1">Bắt đầu với board của bạn</h2><p>Cắm USB, chọn thiết bị. Cấu hình hiện có sẽ được đọc lên để bạn chỉnh tiếp.</p></div>
+      <div class="step-body">
+        <div class="connect-panel"><div class="mini-pad" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></div><div class="connect-copy"><h3>Một trang, từ nạp đến gán phím</h3><p class="muted">Hỗ trợ board ESP32 có 1–9 nút độc lập. Lưu trên board, dùng qua Bluetooth mà không cần mở trang web.</p><div class="actions"><button id="connect">Kết nối board USB</button></div></div></div>
+        <ul class="checklist"><li>Dùng cáp USB có truyền dữ liệu, không phải cáp chỉ sạc.</li><li>Đóng bản EXE, Serial Monitor hoặc tab khác đang giữ cổng COM.</li><li>Chọn USB JTAG/serial, CP210x hoặc CH340 trong hộp thoại.</li></ul>
+        <details class="help"><summary>Không thấy board hoặc kết nối thất bại?</summary><p>Đổi cáp hoặc cổng USB. Với board mới, giữ BOOT khi cắm USB rồi thả ra. Nếu dùng USB-UART, kiểm tra driver của board. Không cần ghép Bluetooth để cấu hình qua USB.</p></details>
       </div>
-    </div>
-  </section>
+      <div class="step-footer"><span class="muted kbd-hint">Chưa có board bên cạnh?</span><button id="demo" class="secondary">Khám phá bản mẫu</button></div>
+    </section>
 
-  <section class="step" data-step="pins">
-    <header><span class="num"><span>3</span></span><h2>Số nút và chân GPIO</h2><span class="summary"></span></header>
-    <div class="body">
-      <p>Mỗi nút được nối từ một chân GPIO xuống GND. Chọn số nút, rồi chọn chân cho từng nút theo thứ tự bạn muốn.</p>
-      <p class="muted">Chưa chắc chân nào? Cứ lưu, tới bước Kiểm tra nút nào không sáng thì quay lại đây sửa.</p>
-      <label class="field">Số nút<input id="count" type="number" min="1"></label>
-      <div id="pins" class="pins"></div>
-      <details><summary>Nâng cao: tên Bluetooth, chống dội phím, thời gian giữ</summary>
-        <label class="field">Tên Bluetooth<input id="name" maxlength="15"></label>
-        <label class="field">Chống dội phím, debounce (ms)<input id="debounce" type="number"></label>
-        <label class="field">Giữ nút cuối để bật/tắt Bluetooth (ms)<input id="hold" type="number" step="100"></label>
-      </details>
-      <div class="actions"><button id="savePins">Lưu và tiếp tục</button></div>
-    </div>
-  </section>
+    <section class="step" data-step="firmware" aria-labelledby="title-firmware" hidden>
+      <div class="step-header"><p class="eyebrow">Bước 2 / 6</p><h2 id="title-firmware" tabindex="-1">Kiểm tra firmware</h2><p id="firmwareReason">Firmware giúp board nhận nút và gửi phím qua Bluetooth.</p></div>
+      <div class="step-body">
+        <div id="firmwareStatus" class="notice"></div>
+        <div class="actions"><button id="skipFirmware">Giữ firmware và tiếp tục</button><button id="showInstaller" class="secondary">Nạp / cập nhật firmware</button></div>
+        <div id="installer" hidden><div class="notice warning"><strong>Erase device sẽ xóa cấu hình và ghép đôi.</strong>Khi cập nhật board đang dùng, bỏ chọn Erase device để giữ tên, GPIO và phím đã gán. Chỉ bật khi muốn cài mới hoàn toàn.</div><ol class="firmware-instructions"><li>Bấm Nạp firmware, chọn lại đúng board.</li><li>Bấm Install. Kiểm tra lựa chọn Erase device trước khi xác nhận.</li><li>Chờ Installation complete, đóng hộp thoại rồi bấm Đã nạp xong.</li></ol><div class="actions"><esp-web-install-button manifest="firmware/web-manifest.json"><button slot="activate" id="installFirmware">Nạp firmware</button><span slot="unsupported" class="err">Cần Chrome hoặc Edge.</span><span slot="not-allowed" class="err">Cần HTTPS hoặc localhost.</span></esp-web-install-button><button id="flashed" class="secondary">Đã nạp xong</button></div></div>
+      </div>
+      <div class="step-footer"><button class="secondary" data-back="connect">Quay lại</button><span class="kbd-hint">Board đang hoạt động không bắt buộc nạp lại.</span></div>
+    </section>
 
-  <section class="step" data-step="actions">
-    <header><span class="num"><span>4</span></span><h2>Gán chức năng cho từng nút</h2><span class="summary"></span></header>
-    <div class="body">
-      <p>Chọn việc mỗi nút sẽ làm. Board tự gõ qua Bluetooth, không cần cài ứng dụng.</p>
-      <p class="muted">Phím tắt, ví dụ <code>Ctrl+C</code>, <code>Win+Shift+S</code>, <code>media_play_pause</code>. Chuỗi phím là nhiều phím cách nhau dấu phẩy, ví dụ <code>Ctrl+L,wait:300,Ctrl+C</code>.</p>
-      <table>
-        <thead><tr><th>Nút</th><th>Chức năng</th><th>Giá trị</th></tr></thead>
-        <tbody id="actionRows"></tbody>
-      </table>
-      <div class="actions"><button id="saveActions">Lưu và tiếp tục</button></div>
-    </div>
-  </section>
+    <section class="step" data-step="pins" aria-labelledby="title-pins" hidden>
+      <div class="step-header"><p class="eyebrow">Bước 3 / 6</p><h2 id="title-pins" tabindex="-1">Khai báo nút và GPIO</h2><p>Số nút và chân đang lưu trên board đã điền sẵn. Đúng rồi thì tiếp tục, không cần sửa.</p></div>
+      <div class="step-body">
+        <div class="fields"><label class="field" for="count">Số nút vật lý<select id="count"></select></label><label class="field" for="pinPreset">Mẫu đấu dây<select id="pinPreset"><option value="">Tùy chỉnh / hiện tại</option><option value="macropad4">C3 · 4 nút · GPIO 3/4/5/6</option><option value="ti-clicker">C3 · 3 nút · GPIO 7/8/9</option><option value="c3-nine">C3 · 9 nút · Super Mini</option><option value="s3">S3 · 4 nút · GPIO 4/5/6/7</option><option value="esp32">ESP32 · GPIO 25/26/27/32</option></select><small>Chỉ dùng nếu khớp dây thực tế.</small></label></div>
+        <div class="wiring"><span>GPIO</span>—<span>Công tắc</span>—<span>GND chung</span></div>
+        <div><div class="section-heading"><h3>Chân cho từng nút</h3><small>Không chọn trùng GPIO</small></div><div id="pins" class="pins" style="margin-top:12px"></div></div>
+        <details class="advanced"><summary>Tên Bluetooth và thời gian nút</summary><div class="fields"><label class="field" for="name">Tên Bluetooth<input id="name" maxlength="15"><small id="nameLimit"></small></label><label class="field" for="debounce">Chống dội phím (ms)<input id="debounce" type="number" step="1"><small>Giảm tín hiệu nhấn lặp.</small></label><label class="field" for="hold">Giữ nút cuối (ms)<input id="hold" type="number" step="100"><small>Bật/tắt Bluetooth; không áp dụng với action Giữ phím.</small></label></div></details>
+      </div>
+      <div class="step-footer"><button class="secondary" data-back="firmware">Quay lại</button><button id="savePins" class="next">Lưu phần cứng & tiếp tục</button></div>
+    </section>
 
-  <section class="step" data-step="test">
-    <header><span class="num"><span>5</span></span><h2>Bấm thử từng nút</h2><span class="summary"></span></header>
-    <div class="body">
-      <p>Bấm lần lượt từng nút trên board. Ô tương ứng sẽ sáng lên và chuyển sang màu xanh. Trong lúc kiểm tra, board không gõ phím.</p>
-      <p id="testProgress" class="muted"></p>
-      <div id="keys" class="keys"></div>
-      <p class="muted">Nút nào không sáng: bấm vào bước 3 phía trên để đổi chân GPIO của nút đó.</p>
-      <div class="actions"><button id="finish">Hoàn tất</button></div>
-    </div>
-  </section>
+    <section class="step" data-step="actions" aria-labelledby="title-actions" hidden>
+      <div class="step-header"><p class="eyebrow">Bước 4 / 6</p><h2 id="title-actions" tabindex="-1">Mỗi nút, một việc quen tay</h2><p>Chọn nút trên sơ đồ, rồi gán chức năng bên dưới. Thay đổi chỉ ghi vào board khi bấm Lưu.</p></div>
+      <div class="step-body">
+        <div class="profile-toolbar"><p id="saveState" class="save-state" role="status">Khớp cấu hình trên board</p><button id="exportProfile" class="secondary small">Xuất JSON</button><button id="importProfile" class="secondary small">Nhập JSON</button><input id="profileFile" type="file" accept=".json,application/json"><button id="reloadActions" class="quiet small">Hoàn tác</button></div>
+        <div id="pad" class="pad-layout" role="group" aria-label="Chọn nút cần gán chức năng"></div>
+        <section class="editor" aria-labelledby="editorTitle">
+          <div class="editor-top"><h3 id="editorTitle">Nút 1</h3><small id="editorPin"></small></div>
+          <div class="editor-body">
+            <div class="editor-fields"><label class="field" for="actionKind">Chức năng<select id="actionKind"></select></label><div class="field"><label for="actionValue" id="valueLabel">Giá trị</label><div class="input-action"><input id="actionValue" spellcheck="false" autocomplete="off" placeholder="Ctrl+C"><select id="holdValue" aria-label="Phím cần giữ" hidden><option>Ctrl</option><option>Alt</option><option>Shift</option><option>Win</option></select><button id="record" class="secondary small">Bắt phím</button></div><p id="actionError" class="inline-error" role="status"></p></div></div>
+            <p id="actionHelp" class="action-help"></p>
+            <div id="quickPanel" class="quick-panel"><div class="section-heading"><span class="eyebrow">Phím nhanh</span><small>Chọn phím bổ trợ, rồi phím chính</small></div><div id="modifiers" class="modifiers" role="group" aria-label="Phím bổ trợ"></div><div id="quickKeys" class="quick-keys" role="group" aria-label="Phím chính"></div></div>
+            <div><p class="eyebrow" style="margin-bottom:8px">Gán nhanh</p><div class="presets" id="presets"></div></div>
+          </div>
+          <div class="editor-bottom"><span class="kbd-hint" id="editorHint">Ctrl+C là tổ hợp. 1,Enter là chuỗi phím.</span><div class="actions"><label for="copyTarget" class="muted">Sao chép sang</label><select id="copyTarget" aria-label="Nút nhận bản sao"></select><button id="copyAction" class="secondary small">Sao chép</button></div></div>
+        </section>
+        <div class="notice"><strong>Web và bản EXE khác nhau ở đâu?</strong>Web cấu hình phím tắt, giữ phím, chuỗi phím và media chạy trực tiếp trên board. Mở ứng dụng, chạy script, dán Unicode và chụp ảnh vào clipboard cần bản EXE; nếu đã có trên board, web giữ nguyên các action đó.</div>
+      </div>
+      <div class="step-footer"><button class="secondary" data-back="pins">Quay lại</button><button id="saveActions" class="next">Lưu & kiểm tra nút</button></div>
+    </section>
 
-  <section class="step" data-step="done" hidden id="doneStep">
-    <header><span class="num"><span>&#10003;</span></span><h2>Xong! Board đã sẵn sàng</h2></header>
-    <div class="body">
-      <p>Để dùng không dây: mở Bluetooth trên máy tính hoặc điện thoại, chọn <b>Thêm thiết bị</b>, rồi ghép với <b id="doneName"></b>.</p>
-      <p>Lúc này USB chỉ cần để cấp nguồn, có thể cắm sạc dự phòng. Giữ nút cuối khoảng <span id="doneHold"></span> giây để bật hoặc tắt Bluetooth.</p>
-      <p id="pairHint" hidden>Mang sang máy khác: giữ <b>nút 9</b>, rồi giữ thêm <b>nút 6</b> khoảng <span class="holdSeconds"></span> giây. Board đổi sang địa chỉ Bluetooth mới để máy mới ghép như thiết bị mới, máy cũ không giành kết nối được nữa. Chỉ dùng khi đổi máy, không dùng để thử kết nối lại: mỗi lần dùng, máy đang ghép cũng phải ghép lại.</p>
-      <div class="actions"><button id="again" class="secondary">Cấu hình lại</button></div>
-    </div>
-  </section>
+    <section class="step" data-step="test" aria-labelledby="title-test" hidden>
+      <div class="step-header"><p class="eyebrow">Bước 5 / 6</p><h2 id="title-test" tabindex="-1">Bấm thử trên board</h2><p id="testSafety">Đang chuẩn bị chế độ kiểm tra…</p></div>
+      <div class="step-body test-layout"><div id="testWarning" class="notice warning" hidden></div><button id="enableSafeTest" class="secondary" hidden>Chuyển board sang Tự động để kiểm tra</button><div class="section-heading"><p id="testProgress" role="status"></p><button id="resetTest" class="secondary small">Kiểm tra lại</button></div><div class="progress" role="progressbar" id="testBar" aria-label="Số nút đã kiểm tra" aria-valuemin="0" aria-valuemax="9" aria-valuenow="0"><span id="testFill"></span></div><div id="keys" class="pad-layout" aria-label="Trạng thái nút thật"></div><p id="lastEvent" class="test-result muted" aria-live="polite">Chưa có lần nhấn nào.</p><p class="muted">Nút không phản hồi? Quay lại Nút & GPIO để kiểm tra dây và chân. Nút cuối thường gửi khi thả; action Giữ phím gửi ngay khi nhấn và nhả.</p></div>
+      <div class="step-footer"><button class="secondary" data-back="actions">Sửa chức năng</button><button id="finish" class="next">Hoàn tất</button></div>
+    </section>
 
-  <details>
-    <summary>Nhật ký kỹ thuật</summary>
-    <div id="log" role="log"></div>
-  </details>
-</main>
-
-<script>
-// Kinds the firmware runs by itself; ids match ActionKind in include/macro_types.h.
-const KINDS = [["none", 0, "Không gán"], ["hotkey", 1, "Phím tắt"], ["sequence", 3, "Chuỗi phím"],
-               ["lock_screen", 4, "Khóa màn hình"], ["close_app", 6, "Đóng ứng dụng đang dùng"]];
-const NEEDS_VALUE = new Set([1, 3]);
-const ORDER = ["connect", "firmware", "pins", "actions", "test", "done"];
-const $ = (id) => document.getElementById(id);
-const step = (name) => document.querySelector(`.step[data-step="${name}"]`);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const hex = (text) => [...new TextEncoder().encode(text)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-const unhex = (h) => h === "-" ? "" : new TextDecoder().decode(new Uint8Array(h.match(/../g).map((b) => parseInt(b, 16))));
-
-let port = null, reader = null, writer = null, info = null, waiters = [], leaseTimer = null;
-let current = "connect", reconnecting = false, latestVersion = null;
-const done = new Set();
-const pressed = new Set();
-
-function log(text) {
-  $("log").append(text + "\n");
-  $("log").scrollTop = $("log").scrollHeight;
-}
-function say(text, cls = "") { $("message").textContent = text; $("message").className = cls; if (text) log(text); }
-
-// ---------- Wizard ----------
-function go(name) {
-  if (current === "test" && name !== "test") stopTest();
-  current = name;
-  const index = ORDER.indexOf(name);
-  for (const [i, key] of ORDER.entries()) {
-    if (i < index) done.add(key);
-    else done.delete(key);
-  }
-  for (const el of document.querySelectorAll(".step")) {
-    const key = el.dataset.step;
-    el.classList.toggle("current", key === name);
-    el.classList.toggle("done", done.has(key));
-    el.classList.toggle("todo", !done.has(key) && key !== name);
-  }
-  $("doneStep").hidden = name !== "done";
-  for (const li of $("stepper").children) {
-    li.className = li.dataset.step === name ? "current" : done.has(li.dataset.step) ? "done" : "";
-  }
-  if (name === "test") startTest();
-  step(name).scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-function showFirmware(reason, canSkip) {
-  $("firmwareReason").textContent = reason;
-  $("skipFirmware").hidden = !canSkip;
-  go("firmware");
-}
-// Finished steps can be reopened by clicking their header.
-for (const el of document.querySelectorAll(".step header")) {
-  el.addEventListener("click", () => {
-    const key = el.parentElement.dataset.step;
-    if (!done.has(key)) return;
-    if (key === "connect") return go("connect");
-    if (!info) return;
-    if (key === "firmware") return showFirmware(`Board đang chạy firmware ${info.version}. Nạp lại nếu muốn cập nhật.`, true);
-    if (port) go(key);
-  });
-}
-function summary(name, text) { step(name).querySelector(".summary").textContent = text; }
-
-// ---------- Serial ----------
-async function openPort(p) {
-  await p.open({ baudRate: 115200 });
-  // DTR tells the firmware a host is listening; RTS low avoids resetting native-USB chips.
-  await p.setSignals({ dataTerminalReady: true, requestToSend: false });
-  port = p;
-  writer = port.writable.getWriter();
-  readLoop();
-}
-
-async function readLoop() {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  reader = port.readable.getReader();
-  try {
-    for (;;) {
-      const { value, done: finished } = await reader.read();
-      if (finished) break;
-      buffer += decoder.decode(value, { stream: true });
-      let index;
-      while ((index = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, index).trim();
-        buffer = buffer.slice(index + 1);
-        if (line) onLine(line);
-      }
-      if (buffer.length > 4096) buffer = "";
-    }
-  } catch {
-    // A restarting or unplugged board ends the stream; callers handle reconnection.
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function onLine(line) {
-  for (const waiter of [...waiters]) {
-    waiter.lines.push(line);
-    if (waiter.done(line)) {
-      waiters = waiters.filter((w) => w !== waiter);
-      waiter.resolve(waiter.lines);
-    }
-  }
-  const press = line.match(/^EVT \d+ \d+ (\d)$/);
-  if (press) keyPressed(Number(press[1]));
-}
-
-async function send(command) { await writer.write(new TextEncoder().encode(command + "\n")); }
-
-function request(command, isEnd, timeout = 3000) {
-  return new Promise((resolve, reject) => {
-    const waiter = { lines: [], done: isEnd, resolve };
-    waiters.push(waiter);
-    setTimeout(() => {
-      if (waiters.includes(waiter)) {
-        waiters = waiters.filter((w) => w !== waiter);
-        reject(new Error(`Board không trả lời lệnh ${command.split(" ")[0]}`));
-      }
-    }, timeout);
-    send(command).catch(reject);
-  });
-}
-
-async function closePort() {
-  clearInterval(leaseTimer); leaseTimer = null;
-  waiters = [];
-  try { await reader?.cancel(); } catch {}
-  try { writer?.releaseLock(); } catch {}
-  try { await port?.close(); } catch {}
-  port = reader = writer = null;
-}
-
-// Reopen a port this page was already granted; no click needed, so it works after a reboot.
-async function reopen(preferred, attempts = 20) {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    await sleep(700);
-    const ports = await navigator.serial.getPorts();
-    for (const p of [preferred, ...ports.filter((p) => p !== preferred)].filter(Boolean)) {
-      try { await openPort(p); await sleep(800); await loadBoard(); return true; }
-      catch { await closePort(); }
-    }
-  }
-  return false;
-}
-
-// ---------- Board data ----------
-function parseInfo(lines) {
-  const get = (verb) => (lines.find((l) => l.startsWith(verb + " ")) || "").split(" ").slice(1);
-  const device = get("DEVICE"), limits = get("LIMITS").map(Number), config = get("CONFIG");
-  if (!device.length || !limits.length || !config.length) throw new Error("Firmware quá cũ, cần nạp lại.");
-  return {
-    chip: device[1], version: device[2], board: device[3],
-    maxButtons: limits[0], maxValue: limits[1], maxName: limits[2],
-    debounce: [limits[3], limits[4]], hold: [limits[5], limits[6]],
-    usablePins: get("PINS_OK")[0].split(",").map(Number),
-    name: unhex(config[0]), pins: config[1].split(",").map(Number),
-    debounceMs: Number(config[2]), holdMs: Number(config[3]),
-  };
-}
-
-async function loadBoard() {
-  info = parseInfo(await request("INFO", (l) => l === "INFO END", 2000));
-  const dump = await request("DUMP", (l) => l === "DUMP END");
-  info.actions = {};
-  for (const line of dump) {
-    const f = line.split(" ");
-    if (f[0] === "ACT" && f.length === 4) info.actions[Number(f[1])] = [Number(f[2]), unhex(f[3])];
-  }
-  fillPins();
-  fillActions();
-  summary("connect", `${info.name} · ${info.chip.toUpperCase().replace(/^ESP32(.)/, "ESP32-$1")}`);
-  summary("firmware", `Phiên bản ${info.version}`);
-  summary("pins", `${info.pins.length} nút · GPIO ${info.pins.join(", ")}`);
-}
-
-// ---------- Step 1: connect ----------
-if (!("serial" in navigator)) {
-  $("unsupported").hidden = false;
-  $("connect").disabled = true;
-}
-fetch("firmware/web-manifest.json").then((r) => r.json()).then((m) => { latestVersion = m.version; }).catch(() => {});
-
-$("connect").addEventListener("click", async () => {
-  let p;
-  try {
-    p = await navigator.serial.requestPort({ filters: [
-      { usbVendorId: 0x303a }, { usbVendorId: 0x10c4 }, { usbVendorId: 0x1a86 }, { usbVendorId: 0x0403 } ] });
-  } catch { return say("Chưa chọn board nào. Bấm Kết nối board và chọn board trong danh sách.", "err"); }
-  await closePort();
-  say("Đang đọc thông tin board…");
-  try {
-    await openPort(p);
-    await sleep(800);
-  } catch {
-    await closePort();
-    return say("Không mở được cổng. Hãy đóng ứng dụng macropad hoặc tab khác đang dùng board, rồi thử lại.", "err");
-  }
-  try {
-    await loadBoard();
-  } catch {
-    // Blank chip or firmware too old to answer INFO: install it next.
-    await closePort();
-    info = null;
-    summary("connect", "Đã thấy board");
-    say("");
-    return showFirmware("Board chưa có firmware macropad, hoặc firmware quá cũ. Hãy nạp firmware mới.", false);
-  }
-  if (latestVersion && latestVersion !== info.version) {
-    await closePort();
-    say("");
-    return showFirmware(`Board đang chạy firmware ${info.version}, đã có bản ${latestVersion}. Nên cập nhật (nhớ tắt Erase device).`, true);
-  }
-  say(`Đã kết nối ${info.name}. Board đã có firmware ${info.version}.`, "ok");
-  go("pins");
-});
-
-// ---------- Step 2: firmware ----------
-// ESP Web Tools needs the port, so this page lets go of it before the installer opens.
-document.querySelector("esp-web-install-button").addEventListener("click", () => closePort());
-
-$("flashed").addEventListener("click", async () => {
-  $("flashed").disabled = true;
-  say("Đang kết nối lại board…");
-  await closePort();
-  const ok = await reopen(null, 8);
-  $("flashed").disabled = false;
-  if (!ok) return say("Chưa kết nối lại được. Rút USB, cắm lại, rồi bấm Đã nạp xong lần nữa. Nếu vẫn không được, quay lại bước 1.", "err");
-  say(`Đã nạp xong firmware ${info.version}.`, "ok");
-  go("pins");
-});
-
-$("skipFirmware").addEventListener("click", async () => {
-  if (!port) {
-    say("Đang kết nối lại board…");
-    if (!(await reopen(null, 5))) return say("Không kết nối lại được, hãy quay lại bước 1.", "err");
-  }
-  say("");
-  go("pins");
-});
-
-// ---------- Step 3: pins ----------
-function fillPins() {
-  $("count").max = info.maxButtons;
-  $("count").value = info.pins.length;
-  $("name").value = info.name;
-  $("name").maxLength = info.maxName;
-  $("debounce").min = info.debounce[0]; $("debounce").max = info.debounce[1]; $("debounce").value = info.debounceMs;
-  $("hold").min = info.hold[0]; $("hold").max = info.hold[1]; $("hold").value = info.holdMs;
-  $("pins").replaceChildren();
-  renderPins();
-}
-
-function renderPins() {
-  const count = Math.max(1, Math.min(info.maxButtons, Number($("count").value) || 1));
-  const old = [...$("pins").querySelectorAll("select")].map((s) => Number(s.value));
-  $("pins").replaceChildren();
-  for (let i = 0; i < count; i++) {
-    const label = document.createElement("label");
-    label.textContent = `Nút ${i + 1}`;
-    const select = document.createElement("select");
-    info.usablePins.forEach((pin) => select.add(new Option(`GPIO${pin}`, pin)));
-    // New rows get the first pin not already used, so the default has no duplicates.
-    select.value = old[i] ?? info.pins[i] ?? info.usablePins.find((p) => !old.includes(p) && !info.pins.includes(p)) ?? info.usablePins[0];
-    label.append(select);
-    $("pins").append(label);
-  }
-}
-$("count").addEventListener("input", () => info && renderPins());
-
-$("savePins").addEventListener("click", () => busy($("savePins"), async () => {
-  const name = $("name").value.trim();
-  const pins = [...$("pins").querySelectorAll("select")].map((s) => Number(s.value));
-  const debounce = Number($("debounce").value), hold = Number($("hold").value);
-  if (!name || new TextEncoder().encode(name).length > info.maxName || /[\x00-\x1f\x7f]/.test(name))
-    throw new Error(`Tên Bluetooth phải dài 1 đến ${info.maxName} ký tự.`);
-  if (new Set(pins).size !== pins.length) throw new Error("Có hai nút đang chọn cùng một chân GPIO.");
-  if (!(debounce >= info.debounce[0] && debounce <= info.debounce[1])) throw new Error(`Debounce phải từ ${info.debounce[0]} đến ${info.debounce[1]} ms.`);
-  if (!(hold >= info.hold[0] && hold <= info.hold[1])) throw new Error(`Thời gian giữ phải từ ${info.hold[0]} đến ${info.hold[1]} ms.`);
-  const unchanged = name === info.name && pins.join() === info.pins.join() &&
-    debounce === info.debounceMs && hold === info.holdMs;
-  if (!unchanged) {
-    const replies = await request(`CFG ${hex(name)} ${pins.join(",")} ${debounce} ${hold}`, (l) => l.startsWith("CFG "));
-    if (replies.at(-1).startsWith("CFG ERROR")) throw new Error(`Board từ chối cấu hình (${replies.at(-1).split(" ").pop()}).`);
-    say("Đã lưu. Board đang khởi động lại…");
-    reconnecting = true;
-    const known = port;
-    await closePort();
-    const ok = await reopen(known);
-    reconnecting = false;
-    if (!ok) { go("connect"); throw new Error("Board đã lưu nhưng chưa tự kết nối lại. Bấm Kết nối board."); }
-  }
-  say(`Đã lưu ${info.pins.length} nút.`, "ok");
-  go("actions");
-}));
-
-// ---------- Step 4: actions ----------
-function fillActions() {
-  $("actionRows").replaceChildren();
-  for (let n = 1; n <= info.pins.length; n++) {
-    const [kind, value] = info.actions[n] || [0, ""];
-    const tr = document.createElement("tr");
-    const select = document.createElement("select");
-    KINDS.forEach(([, id, label]) => select.add(new Option(label, id)));
-    // Desktop-only kinds (text, app, url, ...) cannot run on the board; show them as unassigned.
-    select.value = KINDS.some(([, id]) => id === kind) ? kind : 0;
-    const input = document.createElement("input");
-    input.value = NEEDS_VALUE.has(Number(select.value)) ? value : "";
-    const sync = () => {
-      const k = Number(select.value);
-      input.disabled = !NEEDS_VALUE.has(k);
-      input.placeholder = k === 3 ? "Ctrl+L,wait:300,Ctrl+C" : k === 1 ? "Ctrl+C" : "";
-    };
-    select.addEventListener("change", sync);
-    sync();
-    tr.innerHTML = `<td>Nút ${n}</td>`;
-    [select, input].forEach((el) => { const td = document.createElement("td"); td.append(el); tr.append(td); });
-    $("actionRows").append(tr);
-  }
-}
-
-function validValue(kind, value) {
-  if (!NEEDS_VALUE.has(kind)) return null;
-  if (!value.trim()) return "chưa nhập giá trị";
-  if (new TextEncoder().encode(value).length > info.maxValue) return "giá trị quá dài";
-  const steps = (kind === 3 ? value.split(",") : [value]).map((s) => s.trim());
-  if (steps.some((s) => !s || s.split("+").some((k) => !k.trim()))) return "có phím trống, ví dụ Ctrl++ hoặc dấu phẩy thừa";
-  const wait = steps.filter((s) => /^wait:/i.test(s));
-  if (wait.some((s) => !/^wait:\d+$/i.test(s))) return "bước chờ phải có dạng wait:300";
-  return null;
-}
-
-$("saveActions").addEventListener("click", () => busy($("saveActions"), async () => {
-  const wanted = [...$("actionRows").children].map((tr) => {
-    const [select, input] = tr.querySelectorAll("select, input");
-    const kind = Number(select.value);
-    return [kind, NEEDS_VALUE.has(kind) ? input.value.trim() : ""];
-  });
-  wanted.forEach(([kind, value], i) => {
-    const error = validValue(kind, value);
-    if (error) throw new Error(`Nút ${i + 1}: ${error}.`);
-  });
-  say("Đang lưu vào board…");
-  for (const [i, [kind, value]] of wanted.entries()) {
-    const reply = await request(`SYNC ${i + 1} ${kind} ${value ? hex(value) : "-"}`, (l) => l.startsWith("SYNC ACTION"));
-    if (!reply.at(-1).endsWith("OK")) throw new Error(`Board từ chối chức năng của nút ${i + 1}.`);
-  }
-  await request("SYNC_COMMIT", (l) => l === "SYNC COMMIT OK");
-  const dump = await request("DUMP", (l) => l === "DUMP END");
-  for (const [i, [kind, value]] of wanted.entries()) {
-    if (!dump.includes(`ACT ${i + 1} ${kind} ${value ? hex(value) : "-"}`)) throw new Error(`Nút ${i + 1} đọc lại không khớp, hãy lưu lại.`);
-    info.actions[i + 1] = [kind, value];
-  }
-  const assigned = wanted.filter(([kind]) => kind !== 0).length;
-  summary("actions", `${assigned}/${wanted.length} nút đã gán`);
-  say("Đã lưu chức năng. Giờ bấm thử từng nút.", "ok");
-  go("test");
-}));
-
-// ---------- Step 5: test ----------
-// With an app lease the firmware reports presses (EVT) instead of typing them.
-async function startTest() {
-  pressed.clear();
-  $("keys").replaceChildren();
-  for (let n = 1; n <= info.pins.length; n++) {
-    const key = document.createElement("div");
-    key.className = "key";
-    key.innerHTML = `Nút ${n}<small>GPIO${info.pins[n - 1]}</small>`;
-    $("keys").append(key);
-  }
-  updateProgress();
-  if (!writer || leaseTimer) return;
-  await send("APP");
-  leaseTimer = setInterval(() => send("APP").catch(() => {}), 1000);
-}
-async function stopTest() {
-  if (!leaseTimer) return;
-  clearInterval(leaseTimer); leaseTimer = null;
-  try { await send("APP OFF"); } catch {}
-}
-function keyPressed(n) {
-  const key = $("keys").children[n - 1];
-  if (!key || current !== "test") return;
-  pressed.add(n);
-  key.classList.add("pressed", "hit");
-  setTimeout(() => key.classList.remove("hit"), 250);
-  updateProgress();
-}
-function updateProgress() {
-  const total = info ? info.pins.length : 0;
-  const all = pressed.size === total;
-  $("testProgress").textContent = all ? `Cả ${total} nút đều hoạt động. Bấm Hoàn tất.` : `Đã nhận ${pressed.size}/${total} nút.`;
-  $("testProgress").className = all ? "ok" : "muted";
-  summary("test", `${pressed.size}/${total} nút phản hồi`);
-}
-
-$("finish").addEventListener("click", async () => {
-  await stopTest();
-  $("doneName").textContent = info.name;
-  $("doneHold").textContent = (info.holdMs / 1000).toLocaleString("vi-VN");
-  // Matches config::kPairButtons {6, 9} in the firmware.
-  $("pairHint").hidden = info.pins.length < 9;
-  document.querySelector(".holdSeconds").textContent = $("doneHold").textContent;
-  say("");
-  go("done");
-});
-$("again").addEventListener("click", () => go("pins"));
-
-// ---------- Shared ----------
-async function busy(button, task) {
-  button.disabled = true;
-  try { await task(); } catch (err) { say(err.message, "err"); } finally { button.disabled = false; }
-}
-
-navigator.serial?.addEventListener("disconnect", async (e) => {
-  if (e.target !== port || reconnecting || current === "firmware") return;
-  await closePort();
-  say("Board đã bị rút ra. Cắm lại rồi bấm Kết nối board.", "err");
-  go("connect");
-});
-
-go("connect");
-</script>
+    <section class="step" data-step="done" aria-labelledby="title-done" hidden>
+      <div class="step-header"><div class="success-mark" aria-hidden="true">✓</div><p class="eyebrow">Bước 6 / 6</p><h2 id="title-done" tabindex="-1">Hoàn tất thiết lập</h2><p id="doneSummary">Cấu hình đã lưu và đọc lại từ board. Đóng trang vẫn dùng được những chức năng chạy trên board.</p></div>
+      <div class="step-body"><div><p class="eyebrow" style="margin-bottom:8px">Tên khi ghép Bluetooth</p><p id="doneName" class="finish-name"></p></div><ul class="checklist"><li>Mở Bluetooth trên máy tính hoặc điện thoại, chọn Thêm thiết bị và ghép theo tên trên.</li><li>Cáp USB chỉ cần cấp nguồn; có thể dùng sạc dự phòng.</li><li id="doneHoldNote"></li></ul><div id="pairHint" class="notice" hidden><strong>Đổi sang máy khác</strong>Giữ nút 9, rồi thêm nút 6 trong <span id="pairSeconds"></span> giây. Thao tác xóa ghép đôi cũ và đổi địa chỉ Bluetooth; chỉ dùng khi thật sự đổi máy.</div><div id="doneTestNote" class="notice"></div></div>
+      <div class="step-footer"><button id="again" class="secondary">Chỉnh tiếp</button><button id="disconnectDone" class="next">Ngắt kết nối USB</button></div>
+    </section>
+    <details class="log-details"><summary>Nhật ký kết nối & kỹ thuật</summary><pre id="log" role="log"></pre></details>
+  </main>
+  <aside class="side" aria-label="Thông tin thiết bị"><section class="device-card"><div class="device-heading"><span class="eyebrow">Thiết bị</span><span class="badge" id="deviceBadge">Ngoại tuyến</span></div><h3 id="deviceName" class="device-name">Chưa chọn board</h3><dl class="device-facts"><div><dt>Chip</dt><dd id="deviceChip">—</dd></div><div><dt>Firmware</dt><dd id="deviceVersion">—</dd></div><div><dt>Số nút</dt><dd id="deviceCount">—</dd></div><div><dt>Bluetooth</dt><dd id="deviceBluetooth">—</dd></div><div><dt>Chế độ</dt><dd id="deviceMode">—</dd></div><div><dt>Lưu cấu hình</dt><dd id="deviceSave">Chưa đọc</dd></div></dl><button id="disconnect" class="quiet small" disabled>Ngắt kết nối</button></section><div class="side-note"><h3 id="contextTitle">USB để cấu hình</h3><p id="contextHelp">Không cần ghép Bluetooth trước. Trang chỉ kết nối board bạn chọn trong hộp thoại của trình duyệt.</p></div></aside>
+</div>
+<footer class="footer-note">ESP32 · Nút độc lập nối GND · Web Serial trên Chrome / Edge máy tính</footer>
+<script src="app.js"></script>
 </body>
 </html>

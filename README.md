@@ -19,9 +19,19 @@ nếu bản tải về còn là v0.11.0, giao diện sẽ khác.
 
 **Nạp và cấu hình trên trình duyệt, không cần cài gì:**
 [ti014.github.io/timewo-macropad](https://ti014.github.io/timewo-macropad/).
-Mở bằng Chrome hoặc Edge trên máy tính, cắm board qua USB, bấm `Nạp firmware`,
-rồi `Kết nối board` để đổi GPIO, số nút và gán phím tắt/chuỗi phím. Trang chỉ gán
-được các chức năng board tự chạy; mở app, website hay script vẫn cần app Windows.
+Mở bằng Chrome hoặc Edge trên máy tính, cắm board qua USB, bấm `Kết nối board USB`.
+Luồng 6 bước: kết nối → firmware → nút/GPIO → chức năng → kiểm tra → hoàn tất.
+Board đang dùng được đọc cấu hình trước; không bắt buộc nạp lại firmware.
+Sơ đồ nút có bắt phím, phím nhanh, mẫu hành động, sao chép nút, hoàn tác và nhập/xuất
+JSON action (định dạng web, không phải profile EXE; không thay GPIO). Thay đổi chỉ
+được ghi khi bấm Lưu; trang đọc lại để đối chiếu. Có bản mẫu để khám phá không cần board,
+giao diện sáng/tối và bố cục màn hình nhỏ. Giữ phím cần firmware có `CAPS hold_key`.
+Web chỉ cấu hình các chức năng board tự chạy; mở app, website hay script vẫn cần
+app Windows. Các action đã có nhưng web không hỗ trợ vẫn được giữ nguyên.
+
+Chạy web cục bộ từ thư mục repo: `python -m http.server 8000 --directory web`, mở
+`http://localhost:8000/`. Kiểm tra UI/protocol bằng board mô phỏng tại
+`http://localhost:8000/check.html`; trang check không mở cổng USB thật, không nạp firmware.
 
 ![Giao diện v0.11.1: profile mặc định 4 nút, chưa kết nối, macro chưa bật](docs/images/main-window.png?v=0.11.1)
 
@@ -145,7 +155,9 @@ xóa ghép đôi cũ để thấy tên mới.
 Lưu profile qua USB cũng được đọc lại bằng `DUMP` và so sánh từng nút. Qua BLE
 chưa có kênh trả lời nên log ghi `đã gửi`.
 
-Giữ **nút cuối cùng** (mặc định 2,5 giây, chỉnh được) để bật/tắt Bluetooth.
+Giữ **nút cuối cùng** (mặc định 2,5 giây, chỉnh được) để bật/tắt Bluetooth,
+trừ khi nút cuối được gán `hold_key`: khi đó nút giữ phím ngay lúc nhấn và nhả khi thả.
+Tổ hợp ghép máy mới vẫn hoạt động; bắt đầu tổ hợp sẽ nhả phím đang giữ kể cả khi hủy giữa chừng.
 
 ## Hành động chạy trên board và trên máy tính
 
@@ -157,6 +169,12 @@ Danh sách hành động chia hai nhóm, mỗi hàng ghi `Board` hoặc `Máy t�
 - Cần app chạy nền trên máy tính: văn bản Unicode, mở ứng dụng, mở website, chụp
   màn hình vào clipboard, chạy script `.py/.pyw/.ps1/.bat/.cmd` (script `.py` dùng
   Python cài trên máy).
+
+`hold_key` (ID 10) giữ riêng một phím `Ctrl`, `Alt`, `Shift` hoặc `Win` trong lúc
+nhấn nút, dùng được qua app hoặc Bluetooth HID độc lập. Không nhập tổ hợp như `Ctrl+C`.
+Nhiều nút cùng giữ một phím chỉ nhả phím sau khi nút giữ cuối cùng được thả. Đổi profile,
+mode, chủ xử lý app/board hoặc mất kết nối sẽ nhả phím; cần thả rồi nhấn lại để giữ tiếp.
+Cần firmware và app mới cùng hỗ trợ `hold_key`; không dùng với app cũ.
 
 USB của board là Serial để cấu hình, không phải bàn phím USB HID.
 
@@ -191,7 +209,8 @@ kết nối, app nối lại và chỉ khôi phục macro nếu trước đó đ
 sửa cấu hình sẽ hủy ý định tự khôi phục.
 
 Giữ **nút cuối** (nút 4 trên macropad, nút 3 trên Ti Clicker) để bật/tắt radio Bluetooth, không reboot.
-Nhấn ngắn nút cuối chạy macro khi thả nút. Bỏ chọn nút `Bluetooth (tùy chọn)` chỉ ngắt
+Nhấn ngắn nút cuối chạy macro khi thả nút; riêng `hold_key` dùng nhấn/thả ngay và không bật/tắt radio.
+Bỏ chọn nút `Bluetooth (tùy chọn)` chỉ ngắt
 kết nối của app, không tắt radio hay bàn phím HID của hệ điều hành.
 
 **Ghép máy mới (board từ 9 nút):** giữ nút 9, rồi giữ thêm nút 6 khoảng thời gian giữ
@@ -259,8 +278,13 @@ desktop/macropad/
   actions.py          Mở app/web, clipboard, phím tắt trên máy
 ```
 
-Sự kiện BLE là 10 byte little-endian `<BBII>`: phiên bản, nút, ID lần khởi động,
-số thứ tự. USB gửi cùng ID dưới dạng `EVT <session> <sequence> <button>`.
+Sự kiện BLE là 10 byte little-endian `<BBII>`: loại (1 = nhấn, 2 = nhả), nút,
+ID lần khởi động, số thứ tự. USB gửi cùng ID dưới dạng
+`EVT <session> <sequence> <button> PRESSED|RELEASED`; nhả chỉ gửi cho hold đang có chủ app.
+USB `CAPS` có `hold_key`; gói state BLE dùng version 2 để báo hỗ trợ hold,
+giữ nguyên layout cờ standalone/session/sequence. State version 1 là firmware cũ.
+App cũ không đọc được state BLE version 2 hoặc EVT USB mở rộng; nâng firmware phải
+nâng app tương ứng để dùng bridge (Bluetooth HID độc lập không phụ thuộc app).
 App bỏ sự kiện trùng/cũ, không phát lại macro bị bỏ qua trong lúc tạm dừng.
 Kết nối BLE sử dụng pairing/encryption; việc ghi lệnh thành công không đồng nghĩa
 đã xác nhận lưu profile. Log hiện ghi `Đã gửi`, không tuyên bố đã lưu khi chưa có ACK.
@@ -301,6 +325,11 @@ SHA-256 cho cả 4 env; EXE đóng gói vượt smoke-test. Tests gồm chống 
 pause/reconnect, đổi mode, clipboard, INFO/CFG/DUMP, gói firmware và esptool 5,
 bắt buộc nhận diện trước nạp, hủy xác nhận không ghi, nạp đè/nạp mới và timeout
 kiểm tra sau nạp. Đây là kết quả kiểm tra phần mềm, không thay thế thử phần cứng.
+
+Kiểm tra scanner độc lập (cần C++ compiler, không cần framework):
+`c++ -std=c++11 -DCONFIG_IDF_TARGET_ESP32C3 -Iinclude/checks -Iinclude include/checks/scanner.cpp src/button_scanner.cpp -o scanner-check`,
+rồi chạy `./scanner-check`. Bao gồm HoldKey ở nút cuối, tổ hợp ghép bị hủy/cả hai thứ tự,
+giữ tổ hợp đủ thời gian và hành vi nhấn ngắn/giữ nút cuối thông thường.
 
 Kiểm thử tích hợp phần cứng v0.11.0 trên ESP32-C3 Super Mini (Ti Clicker) đã gồm:
 nạp đủ bootloader/phân vùng/firmware bằng code của app, INFO, lưu profile có `wait:`
